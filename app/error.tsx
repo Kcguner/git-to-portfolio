@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { DEFAULT_LOCALE, getDictionary } from '@/lib/i18n';
+import { useSearchParams } from 'next/navigation';
+import { getDictionary, getLocaleFromQueryValues, withLocale } from '@/lib/i18n';
 
 type Props = {
   error: Error & { digest?: string };
@@ -12,7 +13,9 @@ export default function Error({ error, retry }: Props) {
   // Production'da server hata mesajları sanitize edilebilir. Kullanıcıya
   // güvenli, sabit bir mesaj göster; ayrıntıyı server loglarında tut.
   void error;
-  const dictionary = getDictionary(DEFAULT_LOCALE).error;
+  const searchParams = useSearchParams();
+  const locale = getLocaleFromQueryValues(searchParams.getAll('lang'));
+  const dictionary = getDictionary(locale).error;
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-16">
@@ -33,7 +36,7 @@ export default function Error({ error, retry }: Props) {
             <span className="relative z-10">{dictionary.retry}</span>
           </button>
           <Link
-            href="/"
+            href={withLocale('/', locale)}
             className="pill-btn rounded-xl px-6 py-3 font-semibold text-text-primary"
           >
             {dictionary.home}

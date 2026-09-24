@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  sassOptions: {
+    quietDeps: true,
+  },
   images: {
     remotePatterns: [
       {

@@ -33,14 +33,15 @@ describe('getLocale', () => {
 });
 
 describe('withLocale', () => {
-  it('adds the selected locale to a pathname', () => {
+  it('adds a non-default locale to a pathname', () => {
     expect(withLocale('/torvalds', 'en')).toBe('/torvalds?lang=en');
+    expect(withLocale('/torvalds', 'tr')).toBe('/torvalds');
   });
 
   it('replaces an old locale and preserves other query values and the hash', () => {
     expect(
       withLocale('/torvalds', 'de', '?lang=tr&tab=repos&tag=nextjs', '#projects'),
-    ).toBe('/torvalds?lang=de&tab=repos&tag=nextjs#projects');
+    ).toBe('/torvalds?tab=repos&tag=nextjs&lang=de#projects');
   });
 
   it('serializes object query values, including repeated keys', () => {

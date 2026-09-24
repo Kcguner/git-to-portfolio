@@ -82,7 +82,7 @@ export default function RepoGrid({ repos, locale }: Props) {
                 className="inline-flex min-w-0 items-center gap-2 font-mono font-semibold text-accent transition-colors hover:text-emerald-300"
               >
                 <span className="truncate">{repo.name}</span>
-                <span className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true">
+                <span className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" aria-hidden="true">
                   <ArrowIcon />
                 </span>
               </a>
@@ -99,10 +99,12 @@ export default function RepoGrid({ repos, locale }: Props) {
 
             <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/70 pt-4 text-xs text-text-muted">
               <span className="inline-flex items-center gap-1.5" title={dictionary.repositories.stars}>
+                <span className="sr-only">{dictionary.repositories.stars}: </span>
                 <StarIcon />
                 <span>{repo.stargazers_count.toLocaleString(localeTag)}</span>
               </span>
               <span className="inline-flex items-center gap-1.5" title={dictionary.repositories.forks}>
+                <span className="sr-only">{dictionary.repositories.forks}: </span>
                 <ForkIcon />
                 <span>{repo.forks_count.toLocaleString(localeTag)}</span>
               </span>

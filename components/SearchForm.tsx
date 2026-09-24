@@ -54,7 +54,7 @@ export default function SearchForm({ locale }: Props) {
         <div className="flex-1">
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
@@ -76,19 +76,38 @@ export default function SearchForm({ locale }: Props) {
               maxLength={200}
               disabled={isPending}
               aria-invalid={Boolean(error)}
+              aria-errormessage={error ? 'github-username-error' : undefined}
               aria-describedby={error ? 'github-username-error' : undefined}
               className="input-premium w-full rounded-xl py-4 pl-12 pr-4 text-base text-text-primary placeholder:text-text-muted"
             />
           </div>
           {error && (
-            <p id="github-username-error" className="mt-2 text-sm text-red-400" role="alert">
+            <p
+              id="github-username-error"
+              className="mt-2 text-sm text-red-400"
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
               {error}
+            </p>
+          )}
+          {isPending && (
+            <p
+              id="github-username-status"
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {dictionary.search.creating}
             </p>
           )}
         </div>
         <button
           type="submit"
           disabled={isPending}
+          aria-describedby={isPending ? 'github-username-status' : undefined}
           className="btn-primary relative z-10 flex min-w-[140px] items-center justify-center gap-2 rounded-xl px-8 py-4 text-base font-semibold text-white disabled:cursor-wait disabled:opacity-70"
         >
           <span className="relative z-10">

@@ -1,15 +1,79 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import SearchForm from '@/components/SearchForm';
 import SiteHeader from '@/components/SiteHeader';
 import { EXAMPLES } from '@/lib/examples';
-import { getDictionary, getLocale, withLocale, type SearchParams } from '@/lib/i18n';
-import { getGitHubRepoUrl } from '@/lib/site';
+import {
+  getDictionary,
+  getLocale,
+  getLocaleAlternates,
+  OPEN_GRAPH_LOCALES,
+  withLocale,
+  type SearchParams,
+} from '@/lib/i18n';
+import { getGitHubRepoUrl, getSiteUrl } from '@/lib/site';
 
 const STEP_ICONS = ['user', 'image', 'document'] as const;
 
 type HomePageProps = {
   searchParams: Promise<SearchParams>;
 };
+
+function getAbsoluteUrl(pathname: string): string {
+  return new URL(pathname, getSiteUrl()).toString();
+}
+
+function getMetadataAlternates(pathname: string, locale: ReturnType<typeof getLocale>) {
+  const relativeAlternates = getLocaleAlternates(pathname);
+  const languages = Object.fromEntries(
+    Object.entries(relativeAlternates).map(([tag, url]) => [tag, getAbsoluteUrl(url)])
+  );
+
+  return {
+    canonical: getAbsoluteUrl(withLocale(pathname, locale)),
+    languages,
+  };
+}
+
+export async function generateMetadata({ searchParams }: HomePageProps): Promise<Metadata> {
+  const locale = getLocale(await searchParams);
+  const dictionary = getDictionary(locale);
+  const title = dictionary.metadata.homeTitle;
+  const description = dictionary.metadata.homeDescription;
+  const canonicalUrl = getAbsoluteUrl(withLocale('/', locale));
+  const alternates = getMetadataAlternates('/', locale);
+
+  return {
+    title,
+    description,
+    alternates,
+    openGraph: {
+      type: 'website',
+      url: canonicalUrl,
+      siteName: 'Git-to-Portfolio',
+      title,
+      description,
+      locale: OPEN_GRAPH_LOCALES[locale],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: ['/opengraph-image'],
+    },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        'max-image-preview': 'large',
+        'max-snippet': -1,
+        'max-video-preview': -1,
+      },
+    },
+  };
+}
 
 function StepIcon({ icon }: { icon: (typeof STEP_ICONS)[number] }) {
   if (icon === 'user') {

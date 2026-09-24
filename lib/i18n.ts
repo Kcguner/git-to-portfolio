@@ -112,6 +112,13 @@ const turkish = {
   print: {
     label: 'Yazdır / PDF’ye kaydet',
   },
+  share: {
+    label: 'Paylaş',
+    copied: 'Bağlantı panoya kopyalandı.',
+    shared: 'Portföy paylaşıldı.',
+    copyError: 'Bağlantı kopyalanamadı. Adres çubuğundan bağlantıyı kopyalayabilirsiniz.',
+    shareError: 'Paylaşım penceresi açılamadı. Adres çubuğundan bağlantıyı kopyalayabilirsiniz.',
+  },
   notFound: {
     pageLabel: 'Sayfa bulunamadı',
     pageTitle: 'Aradığın sayfa yok',
@@ -130,6 +137,8 @@ const turkish = {
   },
   metadata: {
     userNotFoundTitle: 'Kullanıcı bulunamadı',
+    homeTitle: 'Git-to-Portfolio',
+    homeDescription: 'GitHub profilinden otomatik, sade ve yazdırılabilir bir geliştirici portföyü oluştur.',
     portfolioDescription: (name: string) => `${name} kullanıcısının GitHub portföyü, öne çıkan projeleri ve repo dilleri.`,
     portfolioTitle: (name: string) => `${name} | GitHub portföyü`,
     fallbackDescription: (username: string) => `${username} GitHub portföyü — Git-to-Portfolio ile oluşturuldu.`,
@@ -225,6 +234,13 @@ export const dictionaries: Record<Locale, Dictionary> = {
     print: {
       label: 'Print / Save as PDF',
     },
+    share: {
+      label: 'Share',
+      copied: 'Link copied to clipboard.',
+      shared: 'Portfolio shared.',
+      copyError: 'The link could not be copied. Copy it from the address bar instead.',
+      shareError: 'The share sheet could not be opened. Copy the link from the address bar instead.',
+    },
     notFound: {
       pageLabel: 'Page not found',
       pageTitle: 'The page you requested does not exist',
@@ -243,6 +259,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
     },
     metadata: {
       userNotFoundTitle: 'User not found',
+      homeTitle: 'Git-to-Portfolio',
+      homeDescription: 'Create a simple, printable developer portfolio automatically from a GitHub profile.',
       portfolioDescription: (name) => `GitHub portfolio for ${name}, featuring highlighted projects and repository languages.`,
       portfolioTitle: (name) => `${name} | GitHub portfolio`,
       fallbackDescription: (username) => `${username} GitHub portfolio — created with Git-to-Portfolio.`,
@@ -333,6 +351,13 @@ export const dictionaries: Record<Locale, Dictionary> = {
     print: {
       label: 'Drucken / Als PDF speichern',
     },
+    share: {
+      label: 'Teilen',
+      copied: 'Link in die Zwischenablage kopiert.',
+      shared: 'Portfolio geteilt.',
+      copyError: 'Der Link konnte nicht kopiert werden. Kopiere ihn stattdessen aus der Adressleiste.',
+      shareError: 'Das Freigabemenü konnte nicht geöffnet werden. Kopiere den Link stattdessen aus der Adressleiste.',
+    },
     notFound: {
       pageLabel: 'Seite nicht gefunden',
       pageTitle: 'Die gewünschte Seite gibt es nicht',
@@ -351,6 +376,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
     },
     metadata: {
       userNotFoundTitle: 'Benutzer nicht gefunden',
+      homeTitle: 'Git-to-Portfolio',
+      homeDescription: 'Erstelle automatisch ein einfaches, druckbares Entwicklerportfolio aus einem GitHub-Profil.',
       portfolioDescription: (name) => `GitHub-Portfolio von ${name} mit ausgewählten Projekten und Repository-Sprachen.`,
       portfolioTitle: (name) => `${name} | GitHub-Portfolio`,
       fallbackDescription: (username) => `${username} GitHub-Portfolio — erstellt mit Git-to-Portfolio.`,
@@ -441,6 +468,13 @@ export const dictionaries: Record<Locale, Dictionary> = {
     print: {
       label: 'Imprimir / Guardar en PDF',
     },
+    share: {
+      label: 'Compartir',
+      copied: 'Enlace copiado al portapapeles.',
+      shared: 'Portfolio compartido.',
+      copyError: 'No se pudo copiar el enlace. Cópialo de la barra de direcciones.',
+      shareError: 'No se pudo abrir el menú de compartir. Copia el enlace de la barra de direcciones.',
+    },
     notFound: {
       pageLabel: 'Página no encontrada',
       pageTitle: 'La página que buscas no existe',
@@ -459,6 +493,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
     },
     metadata: {
       userNotFoundTitle: 'Usuario no encontrado',
+      homeTitle: 'Git-to-Portfolio',
+      homeDescription: 'Crea automáticamente un portfolio de desarrollador sencillo e imprimible a partir de un perfil de GitHub.',
       portfolioDescription: (name) => `Portfolio de GitHub de ${name}, con proyectos destacados y lenguajes de repositorios.`,
       portfolioTitle: (name) => `${name} | Portfolio de GitHub`,
       fallbackDescription: (username) => `Portfolio de GitHub de ${username}: creado con Git-to-Portfolio.`,
@@ -473,6 +509,18 @@ export function isLocale(value: unknown): value is Locale {
 export function getLocale(searchParams: SearchParams | null | undefined): Locale {
   const value = searchParams?.lang;
   return isLocale(value) ? value : DEFAULT_LOCALE;
+}
+
+/**
+ * Converts the array returned by URLSearchParams#getAll() to the same shape
+ * Next.js provides to Server Components. A single value remains a string;
+ * repeated values stay an array and therefore follow getLocale()'s safe
+ * fallback behavior.
+ */
+export function getLocaleFromQueryValues(values: readonly string[]): Locale {
+  return getLocale({
+    lang: values.length === 1 ? values[0] : [...values],
+  });
 }
 
 export function getDictionary(locale: Locale): Dictionary {
@@ -501,6 +549,35 @@ export function withLocale(
 ): string {
   const safePathname = pathname.startsWith('/') ? pathname : `/${pathname}`;
   const params = toSearchParams(search);
-  params.set('lang', locale);
-  return `${safePathname}?${params.toString()}${hash}`;
+
+  // The default locale is represented by the clean URL. Removing every lang
+  // value also canonicalizes repeated keys supplied by an incoming request.
+  params.delete('lang');
+  if (locale !== DEFAULT_LOCALE) params.set('lang', locale);
+
+  const query = params.toString();
+  return `${safePathname}${query ? `?${query}` : ''}${hash}`;
+}
+
+/**
+ * Returns the stable file-based metadata image path for a profile. Profile OG
+ * images intentionally do not include the locale query because this route is
+ * language-independent and social crawlers may omit page search parameters.
+ */
+export function getProfileOpenGraphImagePath(username: string): string {
+  return `/${encodeURIComponent(username)}/opengraph-image`;
+}
+
+/**
+ * Returns the hreflang targets for a localized pathname.
+ * Values are relative so callers can either resolve them with Metadata API's
+ * metadataBase or make them absolute themselves.
+ */
+export function getLocaleAlternates(pathname: string): Record<string, string> {
+  return {
+    ...Object.fromEntries(
+      LOCALES.map((locale) => [LOCALE_TAGS[locale], withLocale(pathname, locale)])
+    ),
+    'x-default': withLocale(pathname, DEFAULT_LOCALE),
+  };
 }

@@ -16,8 +16,109 @@ function normalizeHttpUrl(value: string | undefined): string | undefined {
   }
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const value = hostname.toLowerCase();
+  return (
+    value === "localhost" ||
+    value.endsWith(".localhost") ||
+    value === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/.test(value)
+  );
+}
+
+function hasValidSiteHostname(url: URL): boolean {
+  const hostname = url.hostname.toLowerCase();
+  if (!hostname || url.port === "0") return false;
+  if (isLoopbackHostname(hostname) || (hostname.startsWith("[") && hostname.endsWith("]"))) {
+    return true;
+  }
+  if (hostname.length > 253 || hostname.endsWith(".")) return false;
+
+  const labels = hostname.split(".");
+  return (
+    labels.length >= 2 &&
+    labels.every(
+      (label) =>
+        label.length >= 1 &&
+        label.length <= 63 &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label)
+    )
+  );
+}
+
+function hasSafeRawSitePath(value: string): boolean {
+  if (/[\\?#\u0000-\u001f\u007f]/.test(value)) return false;
+
+  const schemeSeparator = value.indexOf("://");
+  if (schemeSeparator === -1) return false;
+
+  const authorityStart = schemeSeparator + 3;
+  const pathStart = value.indexOf("/", authorityStart);
+  const authority = value.slice(authorityStart, pathStart === -1 ? value.length : pathStart);
+  if (authority.includes("@") || authority.endsWith(":")) return false;
+  if (pathStart === -1) return true;
+
+  try {
+    return value
+      .slice(pathStart + 1)
+      .split("/")
+      .filter(Boolean)
+      .every((segment) => {
+        const decoded = decodeURIComponent(segment);
+        return decoded !== "." && decoded !== ".." && !decoded.includes("/") && !decoded.includes("\\");
+      });
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSitePath(pathname: string): string | undefined {
+  if (pathname.includes("//") || pathname.includes("\\")) return undefined;
+
+  try {
+    const segments = pathname.split("/").filter(Boolean);
+    for (const segment of segments) {
+      const decoded = decodeURIComponent(segment);
+      if (
+        decoded === "." ||
+        decoded === ".." ||
+        decoded.includes("/") ||
+        decoded.includes("\\") ||
+        /[\u0000-\u001f\u007f]/.test(decoded)
+      ) {
+        return undefined;
+      }
+    }
+    return segments.length > 0 ? `/${segments.join("/")}` : "";
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeSiteUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || !hasSafeRawSitePath(trimmed)) return undefined;
+
+  const normalized = normalizeHttpUrl(trimmed);
+  if (!normalized) return undefined;
+
+  try {
+    const url = new URL(normalized);
+    if (url.search || url.hash) return undefined;
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackHostname(url.hostname))) {
+      return undefined;
+    }
+    if (!hasValidSiteHostname(url)) return undefined;
+
+    const path = normalizeSitePath(url.pathname);
+    return path === undefined ? undefined : `${url.origin}${path}`;
+  } catch {
+    return undefined;
+  }
+}
+
 export function getSiteUrl(): string {
-  return normalizeHttpUrl(process.env.NEXT_PUBLIC_SITE_URL) ?? DEFAULT_SITE_URL;
+  return normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL) ?? DEFAULT_SITE_URL;
 }
 
 function getValidGitHubRepoUrl(value: string): string | undefined {

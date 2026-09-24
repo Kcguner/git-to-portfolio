@@ -78,7 +78,7 @@ export default function ProfileCard({ profile, topLanguages, locale }: Props) {
             alt={`${profile.login} ${dictionary.profile.avatarAlt}`}
             width={160}
             height={160}
-            priority
+            preload
             sizes="(max-width: 640px) 128px, 160px"
             className="profile-avatar h-32 w-32 rounded-full object-cover sm:h-40 sm:w-40"
           />

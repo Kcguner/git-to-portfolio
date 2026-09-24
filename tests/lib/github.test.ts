@@ -97,6 +97,46 @@ describe('GitHub data layer', () => {
       });
     });
 
+    it('normalizes supported username forms before calling GitHub', async () => {
+      fetchMock.mockImplementation(async () =>
+        jsonResponse({ ...profile, login: 'OctoCat' })
+      );
+
+      await expect(getProfile(' @OctoCat ')).resolves.toMatchObject({ login: 'OctoCat' });
+      await expect(getProfile('https://github.com/OctoCat')).resolves.toMatchObject({ login: 'OctoCat' });
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        'https://api.github.com/users/octocat',
+        expect.anything()
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://api.github.com/users/octocat',
+        expect.anything()
+      );
+    });
+
+    it.each([
+      '',
+      '@',
+      'bad/name',
+      'https://github.com/octocat/repository',
+      'a'.repeat(40),
+    ])('rejects invalid username %j without calling GitHub', async (username) => {
+      await expect(getProfile(username)).rejects.toBeInstanceOf(GitHubUserNotFoundError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('can opt out of the shared Next fetch cache for quota-sensitive callers', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(profile));
+
+      await expect(getProfile('octocat', { cache: 'no-store' })).resolves.toEqual(profile);
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init).toMatchObject({ cache: 'no-store' });
+      expect(init).not.toHaveProperty('next');
+    });
+
     it('rejects malformed runtime data as an upstream error', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ ...profile, followers: '10' }));
 
@@ -187,6 +227,49 @@ describe('GitHub data layer', () => {
       await vi.advanceTimersByTimeAsync(25);
       await assertion;
     });
+
+    it('retries a transient timeout and succeeds on the next attempt', async () => {
+      vi.useFakeTimers();
+      let attempt = 0;
+      fetchMock.mockImplementation((_url, init) => {
+        attempt += 1;
+        if (attempt === 1) {
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+          });
+        }
+        return Promise.resolve(jsonResponse(profile));
+      });
+
+      const request = getProfile('octocat', {
+        timeoutMs: 25,
+        maxRetries: 1,
+        retryBaseDelayMs: 0,
+      });
+      const assertion = expect(request).resolves.toEqual(profile);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the timeout error class after all timeout retries fail', async () => {
+      vi.useFakeTimers();
+      fetchMock.mockImplementation((_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+        })
+      );
+
+      const request = getProfile('octocat', {
+        timeoutMs: 25,
+        maxRetries: 1,
+        retryBaseDelayMs: 0,
+      });
+      const assertion = expect(request).rejects.toBeInstanceOf(GitHubTimeoutError);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('getTopRepos', () => {
@@ -261,6 +344,19 @@ describe('GitHub data layer', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it('validates and normalizes the owner before building a repository search', async () => {
+      fetchMock.mockResolvedValueOnce(searchResponse([]));
+
+      await expect(getTopRepos(' @OctoCat ')).resolves.toEqual([]);
+      expect(String(fetchMock.mock.calls[0][0])).toContain('user%3Aoctocat');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an invalid owner without calling the repository search', async () => {
+      await expect(getTopRepos('../octocat')).rejects.toBeInstanceOf(GitHubUserNotFoundError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('rejects malformed search items as an upstream error', async () => {
       fetchMock.mockResolvedValueOnce(searchResponse([repo({ fork: 'false' })]));
 
@@ -284,6 +380,34 @@ describe('GitHub data layer', () => {
         getProfile('octocat', { maxRetries: 1, retryBaseDelayMs: 0 })
       ).resolves.toEqual(profile);
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries transient network errors and wraps a persistent failure as upstream', async () => {
+      const networkError = new TypeError('fetch failed', {
+        cause: Object.assign(new Error('socket reset'), { code: 'ECONNRESET' }),
+      });
+      fetchMock.mockRejectedValue(networkError);
+
+      await expect(
+        getProfile('octocat', { maxRetries: 1, retryBaseDelayMs: 0 })
+      ).rejects.toMatchObject({
+        code: 'upstream',
+        cause: networkError,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry when the caller aborts the request', async () => {
+      const controller = new AbortController();
+      fetchMock.mockImplementation((_url, init) => {
+        controller.abort('cancelled by caller');
+        return Promise.reject(init?.signal?.reason);
+      });
+
+      await expect(
+        getProfile('octocat', { signal: controller.signal, maxRetries: 2, retryBaseDelayMs: 0 })
+      ).rejects.toBe('cancelled by caller');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

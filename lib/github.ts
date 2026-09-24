@@ -1,3 +1,5 @@
+import { normalizeUsername } from './username';
+
 export interface GitHubProfile {
   login: string;
   name: string | null;
@@ -102,10 +104,12 @@ export interface GitHubRequestOptions {
   timeoutMs?: number;
   maxRetries?: number;
   retryBaseDelayMs?: number;
+  cache?: 'force-cache' | 'no-store';
 }
 
 type GitHubFetchInit = RequestInit & {
-  next: { revalidate: number };
+  next?: { revalidate: number };
+  cache?: 'force-cache' | 'no-store';
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -119,6 +123,17 @@ const MAX_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 5_000;
 const MAX_REPOS = 100;
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+const RETRYABLE_NETWORK_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
 
 function headers(): HeadersInit {
   const result: Record<string, string> = {
@@ -126,8 +141,9 @@ function headers(): HeadersInit {
     'X-GitHub-Api-Version': API_VERSION,
     'User-Agent': 'git-to-portfolio',
   };
-  if (process.env.GITHUB_TOKEN) {
-    result.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (token) {
+    result.Authorization = `Bearer ${token}`;
   }
   return result;
 }
@@ -135,6 +151,16 @@ function headers(): HeadersInit {
 function clampInteger(value: number | undefined, fallback: number, max: number): number {
   if (value === undefined || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(0, Math.floor(value)));
+}
+
+function isRetryableNetworkError(error: unknown, depth = 0): boolean {
+  if (error instanceof TypeError || error instanceof GitHubTimeoutError) return true;
+  if (depth >= 2 || typeof error !== 'object' || error === null) return false;
+
+  const record = error as { code?: unknown; cause?: unknown };
+  const hasRetryableCode =
+    typeof record.code === 'string' && RETRYABLE_NETWORK_ERROR_CODES.has(record.code);
+  return hasRetryableCode || isRetryableNetworkError(record.cause, depth + 1);
 }
 
 function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
@@ -223,7 +249,9 @@ async function fetchOnce(
     method: 'GET',
     headers: headers(),
     signal: controller.signal,
-    next: { revalidate: 3600 },
+    ...(options.cache === 'no-store'
+      ? { cache: 'no-store' as const }
+      : { next: { revalidate: 3600 } }),
   };
 
   try {
@@ -255,11 +283,12 @@ async function githubGet(
     try {
       res = await fetchOnce(path, options, timeoutMs);
     } catch (error) {
-      if (error instanceof GitHubError || options.signal?.aborted) throw error;
-      if (error instanceof TypeError && attempt < maxRetries) {
+      if (options.signal?.aborted) throw error;
+      if (isRetryableNetworkError(error) && attempt < maxRetries) {
         await wait(retryDelay(attempt, retryBaseDelayMs));
         continue;
       }
+      if (error instanceof GitHubError) throw error;
       throw new GitHubUpstreamError({ cause: error });
     }
 
@@ -408,11 +437,17 @@ function normalizeRepoCount(count: number | undefined): number {
   return Math.min(MAX_REPOS, Math.max(0, Math.floor(count)));
 }
 
+function requireUsername(username: string): string {
+  const login = normalizeUsername(username);
+  if (!login) throw new GitHubUserNotFoundError();
+  return login;
+}
+
 export async function getProfile(
   username: string,
   options: GitHubRequestOptions = {}
 ): Promise<GitHubProfile> {
-  const login = username.trim();
+  const login = requireUsername(username);
   const res = await githubGet(`/users/${encodeURIComponent(login)}`, options);
   const body = await readJson(res);
 
@@ -429,10 +464,10 @@ export async function getTopRepos(
   count?: number,
   options: GitHubRequestOptions = {}
 ): Promise<GitHubRepo[]> {
+  const login = requireUsername(username);
   const limit = normalizeRepoCount(count);
   if (limit === 0) return [];
 
-  const login = username.trim();
   const params = new URLSearchParams({
     q: `user:${login} fork:false archived:false`,
     sort: 'stars',

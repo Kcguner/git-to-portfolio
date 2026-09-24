@@ -10,6 +10,8 @@ import type { GitHubProfile, GitHubRepo } from '@/lib/github';
 import {
   getDictionary,
   getLocale,
+  getLocaleAlternates,
+  getProfileOpenGraphImagePath,
   OPEN_GRAPH_LOCALES,
   withLocale,
   type SearchParams,
@@ -20,6 +22,7 @@ import { normalizeUsername } from '@/lib/username';
 import ProfileCard from '@/components/ProfileCard';
 import RepoGrid from '@/components/RepoGrid';
 import PrintButton from '@/components/PrintButton';
+import ShareButton from '@/components/ShareButton';
 import SiteHeader from '@/components/SiteHeader';
 
 export const revalidate = 3600;
@@ -47,6 +50,20 @@ function getCanonicalUrl(pathname: string, locale: ReturnType<typeof getLocale>)
   return `${getSiteUrl()}${withLocale(pathname, locale)}`;
 }
 
+function getMetadataAlternates(pathname: string, locale: ReturnType<typeof getLocale>) {
+  const languages = Object.fromEntries(
+    Object.entries(getLocaleAlternates(pathname)).map(([tag, url]) => [
+      tag,
+      `${getSiteUrl()}${url}`,
+    ])
+  );
+
+  return {
+    canonical: getCanonicalUrl(pathname, locale),
+    languages,
+  };
+}
+
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const [resolvedUsername, query] = await Promise.all([resolveUsername(params), searchParams]);
   const locale = getLocale(query);
@@ -55,7 +72,11 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (!resolvedUsername) {
     return {
       title: dictionary.metadata.userNotFoundTitle,
-      robots: { index: false, follow: false },
+      robots: {
+        index: false,
+        follow: false,
+        googleBot: { index: false, follow: false },
+      },
     };
   }
 
@@ -68,12 +89,12 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     const displayName = profile.name?.trim() || profile.login;
     const description = profile.bio?.trim() || dictionary.metadata.portfolioDescription(displayName);
     const title = dictionary.metadata.portfolioTitle(displayName);
-    const imageUrl = `/${encodeURIComponent(canonicalUsername)}/opengraph-image`;
+    const imageUrl = getProfileOpenGraphImagePath(canonicalUsername);
 
     return {
       title,
       description,
-      alternates: { canonical: canonicalUrl },
+      alternates: getMetadataAlternates(`/${encodeURIComponent(canonicalUsername)}`, locale),
       openGraph: {
         type: 'profile',
         url: canonicalUrl,
@@ -101,9 +122,13 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     };
   } catch {
     return {
-      title: dictionary.metadata.portfolioTitle(username),
-      description: dictionary.metadata.fallbackDescription(username),
-      robots: { index: false, follow: false },
+      title: dictionary.metadata.userNotFoundTitle,
+      description: dictionary.notFound.userDescription,
+      robots: {
+        index: false,
+        follow: false,
+        googleBot: { index: false, follow: false },
+      },
     };
   }
 }
@@ -135,7 +160,11 @@ export default async function UserPage({ params, searchParams }: PageProps) {
   }
 
   const topRepos = repos.slice(0, 6);
-  const topLanguages = calculateTopLanguages(repos);
+  const topLanguages = calculateTopLanguages(topRepos);
+  const displayName = profile.name?.trim() || profile.login;
+  const shareTitle = dictionary.metadata.portfolioTitle(displayName);
+  const shareText = profile.bio?.trim() || dictionary.metadata.portfolioDescription(displayName);
+  const shareUrl = getCanonicalUrl(`/${encodeURIComponent(profile.login)}`, locale);
 
   return (
     <div className="relative min-h-screen">
@@ -150,6 +179,12 @@ export default async function UserPage({ params, searchParams }: PageProps) {
             </svg>
             {dictionary.profile.home}
           </Link>
+          <ShareButton
+            locale={locale}
+            title={shareTitle}
+            text={shareText}
+            url={shareUrl}
+          />
           <PrintButton locale={locale} />
         </div>
       </SiteHeader>
