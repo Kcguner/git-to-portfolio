@@ -16,9 +16,10 @@ Try it live:
 - Public GitHub profile, avatar, bio, location and social links
 - Top non-fork, non-archived repositories sorted by stars
 - Repository-count-based language distribution for featured repositories
-- Turkish, responsive and print-friendly interface
+- Turkish (default), English, German and Spanish interface
+- Responsive and print-friendly localization
 - Dynamic Open Graph and Twitter share images
-- On-demand Next.js ISR with one-hour revalidation
+- Locale-aware pages with one-hour GitHub API data revalidation
 - Search API and profile input normalization
 - Vitest, TypeScript, ESLint and GitHub Actions CI
 
@@ -36,6 +37,16 @@ npm run dev
 ```
 
 Open http://localhost:3000.
+
+## Languages
+
+Turkish (`tr`) is the default. Use the language selector in the header or add a `lang` query parameter to any route:
+
+- English: `/?lang=en` or `/torvalds?lang=en`
+- Deutsch: `/?lang=de` or `/torvalds?lang=de`
+- Español: `/?lang=es` or `/torvalds?lang=es`
+
+Profile navigation and links keep the selected language. Missing, repeated or unsupported `lang` values safely fall back to Turkish.
 
 ## Environment Variables
 
@@ -62,7 +73,7 @@ GITHUB_TOKEN=github_pat_...
    - sorted by stars
 3. The first six repositories are displayed.
 4. Language percentages represent repository counts within those featured repositories; they are not source-code byte or line percentages.
-5. Profile routes use on-demand ISR and revalidate after one hour.
+5. GitHub API requests are cached with one-hour revalidation; language selection is carried in the URL query.
 
 ## Username Input
 

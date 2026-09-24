@@ -2,30 +2,16 @@ import Link from 'next/link';
 import SearchForm from '@/components/SearchForm';
 import SiteHeader from '@/components/SiteHeader';
 import { EXAMPLES } from '@/lib/examples';
+import { getDictionary, getLocale, withLocale, type SearchParams } from '@/lib/i18n';
 import { getGitHubRepoUrl } from '@/lib/site';
 
-const STEPS = [
-  {
-    number: '01',
-    title: 'Kullanıcı adını yaz',
-    text: 'GitHub kullanıcı adını yukarıdaki kutuya gir. Profilin otomatik olarak çekilsin.',
-    icon: 'user',
-  },
-  {
-    number: '02',
-    title: 'Portföyü gör',
-    text: 'Avatar, bio, en çok yıldızlı projeler ve öne çıkan repoların dil dağılımı otomatik listelenir.',
-    icon: 'image',
-  },
-  {
-    number: '03',
-    title: 'Yazdır veya PDF kaydet',
-    text: 'Yazdır penceresinden çıktı al veya PDF olarak kaydet. İş başvurularına hazır.',
-    icon: 'document',
-  },
-] as const;
+const STEP_ICONS = ['user', 'image', 'document'] as const;
 
-function StepIcon({ icon }: { icon: (typeof STEPS)[number]['icon'] }) {
+type HomePageProps = {
+  searchParams: Promise<SearchParams>;
+};
+
+function StepIcon({ icon }: { icon: (typeof STEP_ICONS)[number] }) {
   if (icon === 'user') {
     return (
       <svg className="h-6 w-6 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -64,12 +50,14 @@ function ArrowIcon() {
   );
 }
 
-export default function HomePage() {
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const locale = getLocale(await searchParams);
+  const dictionary = getDictionary(locale);
   const githubRepoUrl = getGitHubRepoUrl();
 
   return (
     <div className="relative min-h-screen">
-      <SiteHeader />
+      <SiteHeader locale={locale} />
 
       <main className="relative overflow-hidden">
         <div className="orb orb-1" aria-hidden="true" />
@@ -79,7 +67,7 @@ export default function HomePage() {
           <div className="mx-auto max-w-3xl text-center">
             <div className="tag mb-8 inline-flex animate-fade-in items-center gap-2 rounded-full px-3 py-1.5">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true" />
-              <span>v1.0 — GitHub&apos;dan portföy</span>
+              <span>{dictionary.home.badge}</span>
             </div>
 
             <h1 className="gradient-text mb-6 animate-slide-up text-4xl font-bold tracking-tight sm:text-5xl md:text-7xl">
@@ -87,12 +75,13 @@ export default function HomePage() {
             </h1>
 
             <p className="mx-auto mb-12 max-w-2xl animate-slide-up stagger-1 text-lg leading-relaxed text-text-secondary md:text-xl">
-              GitHub kullanıcı adını yaz, saniyeler içinde sade ve yazdırılabilir bir{' '}
-              <span className="font-medium text-text-primary">geliştirici portföyü</span> oluşsun.
+              {dictionary.home.heroBefore}
+              <span className="font-medium text-text-primary">{dictionary.home.heroHighlight}</span>
+              {dictionary.home.heroAfter}
             </p>
 
             <div className="animate-slide-up stagger-2">
-              <SearchForm />
+              <SearchForm locale={locale} />
             </div>
           </div>
         </section>
@@ -103,22 +92,24 @@ export default function HomePage() {
 
         <section id="nasil-calisir" className="mx-auto w-full max-w-6xl scroll-mt-24 px-6 py-20 md:py-28">
           <div className="mb-16 text-center">
-            <span className="section-label">Nasıl çalışır?</span>
-            <h2 className="gradient-text mb-4 mt-4 text-3xl font-bold tracking-tight md:text-4xl">Üç adımda portföy</h2>
-            <p className="mx-auto max-w-xl text-text-secondary">Karmaşık kurulum yok, hesap oluşturmak yok. Sadece kullanıcı adın yeterli.</p>
+            <span className="section-label">{dictionary.home.howLabel}</span>
+            <h2 className="gradient-text mb-4 mt-4 text-3xl font-bold tracking-tight md:text-4xl">
+              {dictionary.home.howTitle}
+            </h2>
+            <p className="mx-auto max-w-xl text-text-secondary">{dictionary.home.howDescription}</p>
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            {STEPS.map((step, index) => (
+            {dictionary.home.steps.map((step, index) => (
               <article
-                key={step.number}
+                key={index + 1}
                 className={`card-premium animate-slide-up rounded-2xl p-8 stagger-${index + 1}${index === 1 ? ' featured-card' : ''}`}
               >
                 <div className="mb-6 flex items-start justify-between">
                   <div className="step-number flex h-12 w-12 items-center justify-center rounded-xl">
-                    <span className="font-mono text-lg font-bold text-accent">{step.number}</span>
+                    <span className="font-mono text-lg font-bold text-accent">{String(index + 1).padStart(2, '0')}</span>
                   </div>
-                  <StepIcon icon={step.icon} />
+                  <StepIcon icon={STEP_ICONS[index]} />
                 </div>
                 <h3 className="mb-3 text-xl font-semibold tracking-tight text-text-primary">{step.title}</h3>
                 <p className="leading-relaxed text-text-secondary">{step.text}</p>
@@ -131,26 +122,37 @@ export default function HomePage() {
           <div className="card-premium rounded-2xl p-8 md:p-12">
             <div className="mb-8 flex flex-col justify-between gap-6 md:flex-row md:items-end">
               <div>
-                <span className="section-label">Hemen dene</span>
-                <h2 className="gradient-text mt-3 text-2xl font-bold tracking-tight md:text-3xl">Popüler profiller</h2>
-                <p className="mt-2 text-text-secondary">Bir tıkla gerçek portföyleri incele.</p>
+                <span className="section-label">{dictionary.home.tryLabel}</span>
+                <h2 className="gradient-text mt-3 text-2xl font-bold tracking-tight md:text-3xl">
+                  {dictionary.home.profilesTitle}
+                </h2>
+                <p className="mt-2 text-text-secondary">{dictionary.home.profilesDescription}</p>
               </div>
               <div className="flex items-center gap-2 text-sm text-text-muted">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden="true" />
-                <span>Canlı örnekler</span>
+                <span>{dictionary.home.liveExamples}</span>
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {EXAMPLES.map((example) => (
-                <Link prefetch={false} key={example.username} href={`/${encodeURIComponent(example.username)}`} className="pill-btn group flex items-center justify-between rounded-xl px-6 py-5">
+                <Link
+                  prefetch={false}
+                  key={example.username}
+                  href={withLocale(`/${encodeURIComponent(example.username)}`, locale)}
+                  className="pill-btn group flex items-center justify-between rounded-xl px-6 py-5"
+                >
                   <div className="flex items-center gap-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full border border-accent/20 bg-gradient-to-br from-accent/20 to-accent/5 font-mono text-sm font-bold text-accent">
                       {example.initials}
                     </div>
                     <div>
-                      <div className="font-mono font-medium text-text-primary transition-colors group-hover:text-accent">/{example.username}</div>
-                      <div className="mt-0.5 text-xs text-text-muted">{example.description}</div>
+                      <div className="font-mono font-medium text-text-primary transition-colors group-hover:text-accent">
+                        /{example.username}
+                      </div>
+                      <div className="mt-0.5 text-xs text-text-muted">
+                        {dictionary.home.exampleDescriptions[example.username]}
+                      </div>
                     </div>
                   </div>
                   <span className="text-text-muted transition-all duration-300 group-hover:translate-x-1 group-hover:text-accent">
@@ -171,12 +173,22 @@ export default function HomePage() {
                 <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
               </svg>
             </div>
-            <span className="text-sm text-text-muted">© 2026 Git-to-Portfolio.</span>
+            <span className="text-sm text-text-muted">{dictionary.home.copyright}</span>
           </div>
           <div className="flex items-center gap-6 text-sm text-text-muted">
-            {githubRepoUrl && <a href={githubRepoUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-text-primary">GitHub</a>}
-            <Link href="/#nasil-calisir" className="transition-colors hover:text-text-primary">Nasıl çalışır?</Link>
-            {githubRepoUrl && <a href={githubRepoUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-text-primary">Kaynak</a>}
+            {githubRepoUrl && (
+              <a href={githubRepoUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-text-primary">
+                GitHub
+              </a>
+            )}
+            <Link href={`${withLocale('/', locale)}#nasil-calisir`} className="transition-colors hover:text-text-primary">
+              {dictionary.home.howLink}
+            </Link>
+            {githubRepoUrl && (
+              <a href={githubRepoUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-text-primary">
+                {dictionary.home.source}
+              </a>
+            )}
           </div>
         </div>
       </footer>

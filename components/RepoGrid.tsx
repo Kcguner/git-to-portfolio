@@ -1,8 +1,9 @@
 import type { GitHubRepo } from '@/lib/github';
-import { formatDate } from '@/lib/skills';
+import { getDictionary, LOCALE_TAGS, type Locale } from '@/lib/i18n';
 
 type Props = {
   repos: GitHubRepo[];
+  locale: Locale;
 };
 
 function StarIcon() {
@@ -33,12 +34,27 @@ function ArrowIcon() {
   );
 }
 
-export default function RepoGrid({ repos }: Props) {
+function formatUpdatedAt(iso: string, locale: Locale): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  return date.toLocaleDateString(LOCALE_TAGS[locale], {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+export default function RepoGrid({ repos, locale }: Props) {
+  const dictionary = getDictionary(locale);
+  const localeTag = LOCALE_TAGS[locale];
+
   if (repos.length === 0) {
     return (
       <section className="card-premium rounded-2xl p-8 text-center">
-        <p className="text-text-primary">Gösterilecek repo yok.</p>
-        <p className="mt-1 text-sm text-text-muted">Bu kullanıcının herkese açık reposu bulunamadı.</p>
+        <p className="text-text-primary">{dictionary.repositories.emptyTitle}</p>
+        <p className="mt-1 text-sm text-text-muted">{dictionary.repositories.emptyDescription}</p>
       </section>
     );
   }
@@ -47,10 +63,12 @@ export default function RepoGrid({ repos }: Props) {
     <section aria-labelledby="featured-repos-title">
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
-          <span className="section-label">Projeler</span>
-          <h2 id="featured-repos-title" className="gradient-text mt-2 text-2xl font-bold tracking-tight">Öne çıkan repolar</h2>
+          <span className="section-label">{dictionary.repositories.projectsLabel}</span>
+          <h2 id="featured-repos-title" className="gradient-text mt-2 text-2xl font-bold tracking-tight">
+            {dictionary.repositories.title}
+          </h2>
         </div>
-        <span className="font-mono text-xs text-text-muted">{repos.length} PROJE</span>
+        <span className="font-mono text-xs text-text-muted">{dictionary.repositories.projectCount(repos.length)}</span>
       </div>
 
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -76,19 +94,19 @@ export default function RepoGrid({ repos }: Props) {
             </div>
 
             <p className="mt-4 line-clamp-3 min-h-[4.5rem] text-sm leading-relaxed text-text-secondary">
-              {repo.description ?? 'Bu proje için açıklama bulunmuyor.'}
+              {repo.description ?? dictionary.repositories.missingDescription}
             </p>
 
             <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/70 pt-4 text-xs text-text-muted">
-              <span className="inline-flex items-center gap-1.5" title="Yıldız">
+              <span className="inline-flex items-center gap-1.5" title={dictionary.repositories.stars}>
                 <StarIcon />
-                <span>{repo.stargazers_count.toLocaleString('tr-TR')}</span>
+                <span>{repo.stargazers_count.toLocaleString(localeTag)}</span>
               </span>
-              <span className="inline-flex items-center gap-1.5" title="Fork">
+              <span className="inline-flex items-center gap-1.5" title={dictionary.repositories.forks}>
                 <ForkIcon />
-                <span>{repo.forks_count.toLocaleString('tr-TR')}</span>
+                <span>{repo.forks_count.toLocaleString(localeTag)}</span>
               </span>
-              <span className="ml-auto font-mono">{formatDate(repo.updated_at)}</span>
+              <span className="ml-auto font-mono">{formatUpdatedAt(repo.updated_at, locale)}</span>
             </div>
           </li>
         ))}

@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
+import DocumentLocale from "@/components/DocumentLocale";
 import { getSiteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -67,6 +69,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="fixed inset-0 grid-bg pointer-events-none" aria-hidden="true" />
         <div className="fixed inset-0 glow-top pointer-events-none" aria-hidden="true" />
         <div className="site-shell">{children}</div>
+        <Suspense fallback={null}>
+          <DocumentLocale />
+        </Suspense>
       </body>
     </html>
   );
