@@ -41,8 +41,8 @@ describe("getSiteUrl", () => {
 });
 
 describe("getGitHubRepoUrl", () => {
-  it("returns undefined when NEXT_PUBLIC_GITHUB_REPO_URL is not set", () => {
-    expect(getGitHubRepoUrl()).toBeUndefined();
+  it("uses the project repository when NEXT_PUBLIC_GITHUB_REPO_URL is not set", () => {
+    expect(getGitHubRepoUrl()).toBe("https://github.com/Kcguner/git-to-portfolio");
   });
 
   it("normalizes the configured repository URL", () => {
@@ -51,9 +51,9 @@ describe("getGitHubRepoUrl", () => {
     expect(getGitHubRepoUrl()).toBe("https://github.com/example/project");
   });
 
-  it("rejects repository URLs outside GitHub", () => {
+  it("falls back to the project repository for an invalid override", () => {
     process.env.NEXT_PUBLIC_GITHUB_REPO_URL = "https://example.com/project";
 
-    expect(getGitHubRepoUrl()).toBeUndefined();
+    expect(getGitHubRepoUrl()).toBe("https://github.com/Kcguner/git-to-portfolio");
   });
 });

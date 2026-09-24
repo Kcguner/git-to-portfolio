@@ -1,4 +1,5 @@
 const DEFAULT_SITE_URL = "https://git-to-portfolio.vercel.app";
+const DEFAULT_GITHUB_REPO_URL = "https://github.com/Kcguner/git-to-portfolio";
 
 function normalizeHttpUrl(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -19,8 +20,8 @@ export function getSiteUrl(): string {
   return normalizeHttpUrl(process.env.NEXT_PUBLIC_SITE_URL) ?? DEFAULT_SITE_URL;
 }
 
-export function getGitHubRepoUrl(): string | undefined {
-  const normalized = normalizeHttpUrl(process.env.NEXT_PUBLIC_GITHUB_REPO_URL);
+function getValidGitHubRepoUrl(value: string): string | undefined {
+  const normalized = normalizeHttpUrl(value);
   if (!normalized) return undefined;
 
   try {
@@ -33,4 +34,11 @@ export function getGitHubRepoUrl(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function getGitHubRepoUrl(): string {
+  return (
+    getValidGitHubRepoUrl(process.env.NEXT_PUBLIC_GITHUB_REPO_URL ?? "") ??
+    DEFAULT_GITHUB_REPO_URL
+  );
 }

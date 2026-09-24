@@ -2,7 +2,8 @@
 
 Turn any public GitHub profile into a clean, shareable developer portfolio. No sign-up and no database.
 
-**Demo:** https://git-to-portfolio.vercel.app
+**Demo:** https://git-to-portfolio.vercel.app  
+**Source:** https://github.com/Kcguner/git-to-portfolio
 
 Try it live:
 
@@ -42,8 +43,8 @@ Open http://localhost:3000.
 # Public canonical origin used by metadata, robots.txt and sitemap.xml
 NEXT_PUBLIC_SITE_URL=https://git-to-portfolio.vercel.app
 
-# Public URL of the source repository; source links are hidden when omitted
-NEXT_PUBLIC_GITHUB_REPO_URL=https://github.com/your-account/git-to-portfolio
+# Public source repository URL; defaults to Kcguner/git-to-portfolio
+NEXT_PUBLIC_GITHUB_REPO_URL=https://github.com/Kcguner/git-to-portfolio
 
 # Recommended for public deployments to avoid the anonymous GitHub quota
 GITHUB_TOKEN=github_pat_...
@@ -97,10 +98,11 @@ GitHub Actions runs typecheck, lint, tests, the production dependency audit and 
 
 ## Deploy
 
-1. Fork this repository.
-2. Import the fork into Vercel or another Next.js-compatible host.
-3. Add the environment variables documented above.
-4. Deploy with `npm run build` and start with `npm run start`.
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Kcguner/git-to-portfolio.git)
+
+1. Open the Vercel deployment button or import this repository manually.
+2. Add the environment variables documented above.
+3. Deploy with `npm run build` and start with `npm run start`.
 
 ## Tech Stack
 
@@ -114,4 +116,3 @@ GitHub Actions runs typecheck, lint, tests, the production dependency audit and 
 ## Topics
 
 `nextjs`, `portfolio-generator`, `github-api`, `open-graph`, `print-to-pdf`
-# git-to-portfolio

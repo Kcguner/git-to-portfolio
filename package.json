@@ -2,6 +2,14 @@
   "name": "git-to-portfolio",
   "version": "0.1.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kcguner/git-to-portfolio.git"
+  },
+  "homepage": "https://github.com/Kcguner/git-to-portfolio#readme",
+  "bugs": {
+    "url": "https://github.com/Kcguner/git-to-portfolio/issues"
+  },
   "engines": {
     "node": ">=20.9.0"
   },
