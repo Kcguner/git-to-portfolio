@@ -1,13 +1,23 @@
 import { ImageResponse } from "next/og";
-import { getProfile, getTopRepos } from "@/lib/github";
-import type { GitHubProfile, GitHubRepo } from "@/lib/github";
+import { GitHubError, getProfile, getTopRepos } from "@/lib/github";
+import type { GitHubProfile, GitHubRepo, GitHubRequestOptions } from "@/lib/github";
+import { normalizeUsername } from "@/lib/username";
 
-export const alt = "GitHub profilinden oluşturulan Git-to-Portfolio";
+// Image metadata routes receive route params but not page search params in
+// Next.js 16, so this image stays language-independent for every locale.
+export const alt = "GitHub portfolio created with Git-to-Portfolio";
 export const size = {
   width: 1200,
   height: 630,
 };
 export const contentType = "image/png";
+
+const AUTHENTICATED_CACHE_SECONDS = 3600;
+const UNAUTHENTICATED_CACHE_SECONDS = 60;
+const FAILURE_CACHE_SECONDS = 30;
+const RATE_LIMIT_CACHE_SECONDS = 60;
+const NOT_FOUND_CACHE_SECONDS = 300;
+const INVALID_USERNAME_CACHE_SECONDS = 3600;
 
 type RouteParams = { username: string } | Promise<{ username: string }>;
 
@@ -21,16 +31,55 @@ type ImageData = {
   repos: GitHubRepo[];
 };
 
-async function getUsername(params: RouteParams): Promise<string> {
+async function getUsername(params: RouteParams): Promise<string | null> {
   const { username } = await params;
+  let decoded = username;
   try {
-    return decodeURIComponent(username).trim();
+    decoded = decodeURIComponent(username);
   } catch {
-    return username.trim();
+    decoded = username;
   }
+  return normalizeUsername(decoded);
 }
 
-function renderImage({ username, profile, repos }: ImageData) {
+function isAuthenticated(): boolean {
+  return Boolean(process.env.GITHUB_TOKEN?.trim());
+}
+
+function getRequestOptions(): GitHubRequestOptions {
+  if (isAuthenticated()) return {};
+  return {
+    cache: "no-store",
+    maxRetries: 1,
+    timeoutMs: 5000,
+  };
+}
+
+function getFailureCacheSeconds(error: unknown): number {
+  if (!(error instanceof GitHubError)) return FAILURE_CACHE_SECONDS;
+
+  if (error.code === "primary-rate-limit" || error.code === "secondary-rate-limit") {
+    const requestedDelay = Math.ceil((error.retryAfterMs ?? RATE_LIMIT_CACHE_SECONDS * 1000) / 1000);
+    return Math.max(1, Math.min(RATE_LIMIT_CACHE_SECONDS, requestedDelay));
+  }
+  if (error.code === "auth") return RATE_LIMIT_CACHE_SECONDS;
+  if (error.code === "user-not-found") return NOT_FOUND_CACHE_SECONDS;
+  return FAILURE_CACHE_SECONDS;
+}
+
+function cacheHeaders(maxAge: number, staleWhileRevalidate = 0): Record<string, string> {
+  const directives = ["public", "max-age=0", `s-maxage=${maxAge}`, "must-revalidate"];
+  if (staleWhileRevalidate > 0) {
+    directives.push(`stale-while-revalidate=${staleWhileRevalidate}`);
+  }
+  return { "Cache-Control": directives.join(", ") };
+}
+
+function renderImage(
+  { username, profile, repos }: ImageData,
+  maxAge: number,
+  staleWhileRevalidate = 0
+) {
   const displayName = profile?.name?.trim() || profile?.login || username;
   const login = profile?.login || username;
   const avatarUrl = profile?.avatar_url?.trim();
@@ -71,7 +120,7 @@ function renderImage({ username, profile, repos }: ImageData) {
             {avatarUrl ? (
               <img
                 src={avatarUrl}
-                alt={`${displayName} avatarı`}
+                alt={`${displayName} avatar`}
                 width="144"
                 height="144"
                 style={{
@@ -109,7 +158,7 @@ function renderImage({ username, profile, repos }: ImageData) {
               }}
             >
               <div style={{ display: "flex", color: "#10b981", fontSize: 22, fontWeight: 700 }}>
-                GitHub portföyü
+                GitHub portfolio
               </div>
               <div
                 style={{
@@ -129,8 +178,8 @@ function renderImage({ username, profile, repos }: ImageData) {
           </div>
           <div style={{ display: "flex", color: "#a1a1aa", fontSize: 24 }}>
             {featuredRepos.length > 0
-              ? "Öne çıkan GitHub projeleri"
-              : "GitHub profil paylaşımı"}
+              ? "Featured GitHub projects"
+              : "GitHub profile share"}
           </div>
         </div>
 
@@ -145,7 +194,7 @@ function renderImage({ username, profile, repos }: ImageData) {
             fontSize: 20,
           }}
         >
-          <span>Git-to-Portfolio ile oluşturuldu</span>
+          <span>Created with Git-to-Portfolio</span>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {featuredRepos.length > 0 ? (
               featuredRepos.map((repo) => (
@@ -160,20 +209,33 @@ function renderImage({ username, profile, repos }: ImageData) {
         </div>
       </div>
     ),
-    { ...size },
+    {
+      ...size,
+      headers: cacheHeaders(maxAge, staleWhileRevalidate),
+    },
   );
 }
 
 export default async function ProfileOpenGraphImage({ params }: ProfileImageProps) {
   const username = await getUsername(params);
+  if (!username) {
+    return renderImage(
+      { username: "GitHub user", profile: null, repos: [] },
+      INVALID_USERNAME_CACHE_SECONDS
+    );
+  }
+
+  const requestOptions = getRequestOptions();
+  let profile: GitHubProfile | null = null;
+  let repos: GitHubRepo[] = [];
 
   try {
-    const [profile, repos] = await Promise.all([
-      getProfile(username),
-      getTopRepos(username, 3),
-    ]);
-    return renderImage({ username, profile, repos });
-  } catch {
-    return renderImage({ username, profile: null, repos: [] });
+    profile = await getProfile(username, requestOptions);
+    repos = await getTopRepos(username, 3, requestOptions);
+    return isAuthenticated()
+      ? renderImage({ username, profile, repos }, AUTHENTICATED_CACHE_SECONDS, 300)
+      : renderImage({ username, profile, repos }, UNAUTHENTICATED_CACHE_SECONDS, 30);
+  } catch (error) {
+    return renderImage({ username, profile, repos }, getFailureCacheSeconds(error));
   }
 }

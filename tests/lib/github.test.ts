@@ -51,12 +51,8 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-function searchResponse(items: unknown[]): Response {
-  return jsonResponse({
-    total_count: items.length,
-    incomplete_results: false,
-    items,
-  });
+function reposResponse(items: unknown[]): Response {
+  return jsonResponse(items);
 }
 
 describe('GitHub data layer', () => {
@@ -95,6 +91,46 @@ describe('GitHub data layer', () => {
         Authorization: 'Bearer test-token',
         'X-GitHub-Api-Version': '2022-11-28',
       });
+    });
+
+    it('normalizes supported username forms before calling GitHub', async () => {
+      fetchMock.mockImplementation(async () =>
+        jsonResponse({ ...profile, login: 'OctoCat' })
+      );
+
+      await expect(getProfile(' @OctoCat ')).resolves.toMatchObject({ login: 'OctoCat' });
+      await expect(getProfile('https://github.com/OctoCat')).resolves.toMatchObject({ login: 'OctoCat' });
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        'https://api.github.com/users/octocat',
+        expect.anything()
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://api.github.com/users/octocat',
+        expect.anything()
+      );
+    });
+
+    it.each([
+      '',
+      '@',
+      'bad/name',
+      'https://github.com/octocat/repository',
+      'a'.repeat(40),
+    ])('rejects invalid username %j without calling GitHub', async (username) => {
+      await expect(getProfile(username)).rejects.toBeInstanceOf(GitHubUserNotFoundError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('can opt out of the shared Next fetch cache for quota-sensitive callers', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(profile));
+
+      await expect(getProfile('octocat', { cache: 'no-store' })).resolves.toEqual(profile);
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init).toMatchObject({ cache: 'no-store' });
+      expect(init).not.toHaveProperty('next');
     });
 
     it('rejects malformed runtime data as an upstream error', async () => {
@@ -187,12 +223,55 @@ describe('GitHub data layer', () => {
       await vi.advanceTimersByTimeAsync(25);
       await assertion;
     });
+
+    it('retries a transient timeout and succeeds on the next attempt', async () => {
+      vi.useFakeTimers();
+      let attempt = 0;
+      fetchMock.mockImplementation((_url, init) => {
+        attempt += 1;
+        if (attempt === 1) {
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+          });
+        }
+        return Promise.resolve(jsonResponse(profile));
+      });
+
+      const request = getProfile('octocat', {
+        timeoutMs: 25,
+        maxRetries: 1,
+        retryBaseDelayMs: 0,
+      });
+      const assertion = expect(request).resolves.toEqual(profile);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the timeout error class after all timeout retries fail', async () => {
+      vi.useFakeTimers();
+      fetchMock.mockImplementation((_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+        })
+      );
+
+      const request = getProfile('octocat', {
+        timeoutMs: 25,
+        maxRetries: 1,
+        retryBaseDelayMs: 0,
+      });
+      const assertion = expect(request).rejects.toBeInstanceOf(GitHubTimeoutError);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('getTopRepos', () => {
-    it('queries the first 100 owner repositories by stars and removes fork/archived items', async () => {
+    it('ranks the core API listing by stars and removes fork/archived items', async () => {
       fetchMock.mockResolvedValueOnce(
-        searchResponse([
+        reposResponse([
           repo({ id: 2, name: 'z-last', full_name: 'octocat/z-last', stargazers_count: 5 }),
           repo({
             id: 1,
@@ -227,13 +306,16 @@ describe('GitHub data layer', () => {
 
       const [url] = fetchMock.mock.calls[0];
       const parsed = new URL(String(url));
+      // The core API, never /search/repositories: unauthenticated search
+      // rejects some public accounts with 422 Validation Failed, and it costs
+      // 10 requests/minute instead of the core API's 60 per hour.
       expect(`${parsed.origin}${parsed.pathname}`).toBe(
-        'https://api.github.com/search/repositories'
+        'https://api.github.com/users/octocat/repos'
       );
       expect(Object.fromEntries(parsed.searchParams)).toEqual({
-        q: 'user:octocat fork:false archived:false',
-        sort: 'stars',
-        order: 'desc',
+        type: 'owner',
+        sort: 'pushed',
+        direction: 'desc',
         per_page: '100',
         page: '1',
       });
@@ -246,7 +328,7 @@ describe('GitHub data layer', () => {
 
     it('returns at most the requested count', async () => {
       fetchMock.mockResolvedValueOnce(
-        searchResponse([
+        reposResponse([
           repo({ id: 1, full_name: 'octocat/a', stargazers_count: 3 }),
           repo({ id: 2, full_name: 'octocat/b', stargazers_count: 2 }),
         ])
@@ -255,21 +337,59 @@ describe('GitHub data layer', () => {
       await expect(getTopRepos('octocat', 1)).resolves.toHaveLength(1);
     });
 
+    it('asks for one full page regardless of the requested count', async () => {
+      // The core API cannot sort by stars, so the page size is the ranking
+      // window rather than the number of displayed cards. Asking for exactly
+      // `count` items would rank a partial window and return noise.
+      fetchMock.mockImplementation(async () => reposResponse([]));
+
+      await getTopRepos('octocat', 3);
+      await getTopRepos('octocat', 12);
+      await getTopRepos('octocat', 2.9);
+      await expect(getTopRepos('octocat', Number.POSITIVE_INFINITY)).resolves.toEqual([]);
+
+      const perPage = fetchMock.mock.calls.map(
+        ([url]) => new URL(String(url)).searchParams.get('per_page')
+      );
+      expect(perPage).toEqual(['100', '100', '100']);
+    });
+
+    it('stops paging once a short page arrives', async () => {
+      fetchMock.mockImplementation(async () => reposResponse([]));
+
+      await getTopRepos('octocat');
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('does not call the API for a zero or negative count', async () => {
       await expect(getTopRepos('octocat', 0)).resolves.toEqual([]);
       await expect(getTopRepos('octocat', -2)).resolves.toEqual([]);
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('rejects malformed search items as an upstream error', async () => {
-      fetchMock.mockResolvedValueOnce(searchResponse([repo({ fork: 'false' })]));
+    it('validates and normalizes the owner before building the repository path', async () => {
+      fetchMock.mockResolvedValueOnce(reposResponse([]));
+
+      await expect(getTopRepos(' @OctoCat ')).resolves.toEqual([]);
+      expect(String(fetchMock.mock.calls[0][0])).toContain('/users/octocat/repos');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an invalid owner without calling the repository API', async () => {
+      await expect(getTopRepos('../octocat')).rejects.toBeInstanceOf(GitHubUserNotFoundError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects malformed repository items as an upstream error', async () => {
+      fetchMock.mockResolvedValueOnce(reposResponse([repo({ fork: 'false' })]));
 
       await expect(getTopRepos('octocat')).rejects.toBeInstanceOf(GitHubUpstreamError);
     });
 
-    it('rejects an incomplete search response', async () => {
+    it('rejects a non-array repository listing as an upstream error', async () => {
       fetchMock.mockResolvedValueOnce(
-        jsonResponse({ total_count: 1, incomplete_results: true, items: [] })
+        jsonResponse({ total_count: 1, items: [] })
       );
 
       await expect(getTopRepos('octocat')).rejects.toBeInstanceOf(GitHubUpstreamError);
@@ -284,6 +404,34 @@ describe('GitHub data layer', () => {
         getProfile('octocat', { maxRetries: 1, retryBaseDelayMs: 0 })
       ).resolves.toEqual(profile);
       expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries transient network errors and wraps a persistent failure as upstream', async () => {
+      const networkError = new TypeError('fetch failed', {
+        cause: Object.assign(new Error('socket reset'), { code: 'ECONNRESET' }),
+      });
+      fetchMock.mockRejectedValue(networkError);
+
+      await expect(
+        getProfile('octocat', { maxRetries: 1, retryBaseDelayMs: 0 })
+      ).rejects.toMatchObject({
+        code: 'upstream',
+        cause: networkError,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry when the caller aborts the request', async () => {
+      const controller = new AbortController();
+      fetchMock.mockImplementation((_url, init) => {
+        controller.abort('cancelled by caller');
+        return Promise.reject(init?.signal?.reason);
+      });
+
+      await expect(
+        getProfile('octocat', { signal: controller.signal, maxRetries: 2, retryBaseDelayMs: 0 })
+      ).rejects.toBe('cancelled by caller');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

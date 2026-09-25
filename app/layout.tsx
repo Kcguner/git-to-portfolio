@@ -1,15 +1,25 @@
+import { Suspense } from "react";
+import { headers } from "next/headers";
 import type { Metadata, Viewport } from "next";
+import DocumentLocale from "@/components/DocumentLocale";
+import { LOCALE_TAGS, LOCALES, withLocale } from "@/lib/i18n";
+import { getLocaleFromHeaderValue, LOCALE_HEADER } from "@/lib/locale-negotiation";
 import { getSiteUrl } from "@/lib/site";
+import "./fonts.scss";
 import "./globals.css";
 
 const siteUrl = getSiteUrl();
 const description =
   "GitHub profilinden otomatik, sade ve yazdırılabilir bir geliştirici portföyü oluştur.";
+const localeAlternates = Object.fromEntries(
+  LOCALES.map((locale) => [LOCALE_TAGS[locale], `${siteUrl}${withLocale('/', locale)}`])
+);
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   alternates: {
     canonical: siteUrl,
+    languages: localeAlternates,
   },
   title: {
     default: "Git-to-Portfolio",
@@ -49,24 +59,28 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // Proxy resolves the effective locale (explicit ?lang= > Accept-Language >
+  // default) and forwards it on the request. Reading it here means the SSR
+  // HTML already carries the right <html lang> for screen readers, crawlers
+  // and clients without JavaScript. Reading headers makes the layout dynamic,
+  // which both routes already were; the metadata routes (robots, sitemap,
+  // manifest, opengraph-image) do not render this layout and stay static.
+  const locale = getLocaleFromHeaderValue((await headers()).get(LOCALE_HEADER));
+
   return (
-    <html lang="tr" className="dark">
-      <head>
-        <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5.0.0/index.min.css"
-        />
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.0.0/index.min.css"
-        />
-      </head>
+    <html lang={locale} className="dark">
       <body className="noise-bg min-h-screen antialiased">
         <div className="fixed inset-0 grid-bg pointer-events-none" aria-hidden="true" />
         <div className="fixed inset-0 glow-top pointer-events-none" aria-hidden="true" />
         <div className="site-shell">{children}</div>
+        <Suspense fallback={null}>
+          <DocumentLocale />
+        </Suspense>
       </body>
     </html>
   );

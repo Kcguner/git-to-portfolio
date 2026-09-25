@@ -1,0 +1,16 @@
+// Turbopack resolves these URLs relative to each package's mixins.scss.
+@use "@fontsource/inter/scss/mixins" as inter with (
+  $directory: "../files",
+  $formats: (woff2),
+  $subsets: (latin, latin-ext),
+  $weights: (400, 500, 600, 700)
+);
+@use "@fontsource/jetbrains-mono/scss/mixins" as jetbrains-mono with (
+  $directory: "../files",
+  $formats: (woff2),
+  $subsets: (latin, latin-ext),
+  $weights: (400, 500, 600, 700)
+);
+
+@include inter.faces;
+@include jetbrains-mono.faces;
