@@ -4,6 +4,24 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # vitest, its coverage provider and @types/node are locked together by peer
+    # dependencies, so they have to be upgraded in one pull request.
+    version-groups:
+      - name: test tooling
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@types/node"
+    ignore:
+      # TODO remove once the toolchain supports them again
+      # typescript-eslint rejects TypeScript 7: "typescript-eslint does not
+      # support TS 7.0", so the lint step fails before any test runs.
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
+      # ESLint 10 changed the context API that eslint-plugin-react still calls,
+      # so every rule from that plugin fails to load.
+      - dependency-name: "eslint"
+        versions: [">=10.0.0"]
 
   - package-ecosystem: github-actions
     directory: "/"
