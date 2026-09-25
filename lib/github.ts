@@ -1,3 +1,5 @@
+import { normalizeUsername } from './username';
+
 export interface GitHubProfile {
   login: string;
   name: string | null;
@@ -102,10 +104,12 @@ export interface GitHubRequestOptions {
   timeoutMs?: number;
   maxRetries?: number;
   retryBaseDelayMs?: number;
+  cache?: 'force-cache' | 'no-store';
 }
 
 type GitHubFetchInit = RequestInit & {
-  next: { revalidate: number };
+  next?: { revalidate: number };
+  cache?: 'force-cache' | 'no-store';
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -118,7 +122,24 @@ const DEFAULT_RETRY_BASE_DELAY_MS = 250;
 const MAX_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 5_000;
 const MAX_REPOS = 100;
+/**
+ * How many 100-repository pages of a user's listing are ranked locally. One
+ * page already covers the large majority of accounts; every extra page costs
+ * one more request against the shared core-API quota.
+ */
+const DEFAULT_REPO_PAGES = 1;
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+const RETRYABLE_NETWORK_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
 
 function headers(): HeadersInit {
   const result: Record<string, string> = {
@@ -126,8 +147,9 @@ function headers(): HeadersInit {
     'X-GitHub-Api-Version': API_VERSION,
     'User-Agent': 'git-to-portfolio',
   };
-  if (process.env.GITHUB_TOKEN) {
-    result.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (token) {
+    result.Authorization = `Bearer ${token}`;
   }
   return result;
 }
@@ -135,6 +157,16 @@ function headers(): HeadersInit {
 function clampInteger(value: number | undefined, fallback: number, max: number): number {
   if (value === undefined || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(0, Math.floor(value)));
+}
+
+function isRetryableNetworkError(error: unknown, depth = 0): boolean {
+  if (error instanceof TypeError || error instanceof GitHubTimeoutError) return true;
+  if (depth >= 2 || typeof error !== 'object' || error === null) return false;
+
+  const record = error as { code?: unknown; cause?: unknown };
+  const hasRetryableCode =
+    typeof record.code === 'string' && RETRYABLE_NETWORK_ERROR_CODES.has(record.code);
+  return hasRetryableCode || isRetryableNetworkError(record.cause, depth + 1);
 }
 
 function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
@@ -223,7 +255,9 @@ async function fetchOnce(
     method: 'GET',
     headers: headers(),
     signal: controller.signal,
-    next: { revalidate: 3600 },
+    ...(options.cache === 'no-store'
+      ? { cache: 'no-store' as const }
+      : { next: { revalidate: 3600 } }),
   };
 
   try {
@@ -255,11 +289,12 @@ async function githubGet(
     try {
       res = await fetchOnce(path, options, timeoutMs);
     } catch (error) {
-      if (error instanceof GitHubError || options.signal?.aborted) throw error;
-      if (error instanceof TypeError && attempt < maxRetries) {
+      if (options.signal?.aborted) throw error;
+      if (isRetryableNetworkError(error) && attempt < maxRetries) {
         await wait(retryDelay(attempt, retryBaseDelayMs));
         continue;
       }
+      if (error instanceof GitHubError) throw error;
       throw new GitHubUpstreamError({ cause: error });
     }
 
@@ -357,8 +392,7 @@ function parseProfile(value: unknown): GitHubProfile {
   return profile;
 }
 
-function parseRepo(value: unknown, index: number): GitHubRepo {
-  const path = `search.items[${index}]`;
+function parseRepo(value: unknown, path: string): GitHubRepo {
   const record = requireRecord(value, path);
   const repo: GitHubRepo = {
     id: requireNonNegativeInteger(record, 'id', path),
@@ -386,33 +420,23 @@ function compareStrings(left: string, right: string): number {
   return 0;
 }
 
-function parseSearchResponse(value: unknown): GitHubRepo[] {
-  const record = requireRecord(value, 'search');
-  requireNonNegativeInteger(record, 'total_count', 'search');
-
-  const incomplete = record.incomplete_results;
-  if (typeof incomplete !== 'boolean') {
-    throw new TypeError('GitHub response field search.incomplete_results must be a boolean');
-  }
-  if (incomplete) throw new TypeError('GitHub search response was incomplete');
-
-  if (!Array.isArray(record.items)) {
-    throw new TypeError('GitHub response field search.items must be an array');
-  }
-  return record.items.map(parseRepo);
-}
-
 function normalizeRepoCount(count: number | undefined): number {
   if (count === undefined) return 6;
   if (!Number.isFinite(count)) return 0;
   return Math.min(MAX_REPOS, Math.max(0, Math.floor(count)));
 }
 
+function requireUsername(username: string): string {
+  const login = normalizeUsername(username);
+  if (!login) throw new GitHubUserNotFoundError();
+  return login;
+}
+
 export async function getProfile(
   username: string,
   options: GitHubRequestOptions = {}
 ): Promise<GitHubProfile> {
-  const login = username.trim();
+  const login = requireUsername(username);
   const res = await githubGet(`/users/${encodeURIComponent(login)}`, options);
   const body = await readJson(res);
 
@@ -424,32 +448,74 @@ export async function getProfile(
   }
 }
 
+function parseReposResponse(value: unknown): GitHubRepo[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('GitHub response field repos must be an array');
+  }
+  return value.map((item, index) => parseRepo(item, `repos[${index}]`));
+}
+
+/**
+ * Reads one page of a user's repositories from the core API.
+ *
+ * The Search API is deliberately not used here. Two reasons:
+ *  - It is rate limited an order of magnitude more aggressively (10 requests
+ *    per minute unauthenticated versus 60 per hour for the core API), which
+ *    made a single profile view the most expensive call on the site.
+ *  - Unauthenticated search refuses some public accounts outright with
+ *    `422 Validation Failed` ("the resources do not exist or you do not have
+ *    permission to view them"), so a perfectly valid profile could render with
+ *    no repositories at all. The core endpoint has no such blind spot.
+ *
+ * The trade-off is ranking: the core API cannot sort by stars, so the caller
+ * ranks the fetched window locally. The window is the repositories most
+ * recently pushed, capped at `MAX_PAGES` pages, which covers the great
+ * majority of accounts exactly.
+ */
+async function fetchRepoWindow(
+  login: string,
+  maxPages: number,
+  options: GitHubRequestOptions
+): Promise<GitHubRepo[]> {
+  const collected: GitHubRepo[] = [];
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const params = new URLSearchParams({
+      type: 'owner',
+      sort: 'pushed',
+      direction: 'desc',
+      per_page: String(MAX_REPOS),
+      page: String(page),
+    });
+    const res = await githubGet(`/users/${encodeURIComponent(login)}/repos?${params.toString()}`, options);
+    const body = await readJson(res);
+
+    let repos: GitHubRepo[];
+    try {
+      repos = parseReposResponse(body);
+    } catch (error) {
+      if (error instanceof GitHubError) throw error;
+      throw new GitHubUpstreamError({ status: res.status, cause: error });
+    }
+
+    collected.push(...repos);
+    // A short page means there is nothing left to page through.
+    if (repos.length < MAX_REPOS) break;
+  }
+
+  return collected;
+}
+
 export async function getTopRepos(
   username: string,
   count?: number,
   options: GitHubRequestOptions = {}
 ): Promise<GitHubRepo[]> {
+  const login = requireUsername(username);
   const limit = normalizeRepoCount(count);
   if (limit === 0) return [];
 
-  const login = username.trim();
-  const params = new URLSearchParams({
-    q: `user:${login} fork:false archived:false`,
-    sort: 'stars',
-    order: 'desc',
-    per_page: String(MAX_REPOS),
-    page: '1',
-  });
-  const res = await githubGet(`/search/repositories?${params.toString()}`, options);
-  const body = await readJson(res);
-
-  let repos: GitHubRepo[];
-  try {
-    repos = parseSearchResponse(body);
-  } catch (error) {
-    if (error instanceof GitHubError) throw error;
-    throw new GitHubUpstreamError({ status: res.status, cause: error });
-  }
+  const repos = await fetchRepoWindow(login, DEFAULT_REPO_PAGES, options);
 
   return repos
     .filter((repo) => !repo.fork && !repo.archived)

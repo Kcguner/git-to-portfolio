@@ -2,11 +2,11 @@ node_modules/
 .next/
 .vercel/
 coverage/
-playwright-report/
-test-results/
-blob-report/
-playwright/.cache/
 .env*
 !.env.example
 .DS_Store
 *.tsbuildinfo
+
+# Next.js 16 regenerates this on every `next dev` and `next build`, flipping
+# between the .next/types and .next/dev/types paths. It is fully generated.
+next-env.d.ts

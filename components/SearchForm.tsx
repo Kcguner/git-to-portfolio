@@ -5,9 +5,15 @@ import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { EXAMPLES } from '@/lib/examples';
+import { getDictionary, withLocale, type Locale } from '@/lib/i18n';
 import { normalizeUsername } from '@/lib/username';
 
-export default function SearchForm() {
+type Props = {
+  locale: Locale;
+};
+
+export default function SearchForm({ locale }: Props) {
+  const dictionary = getDictionary(locale);
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -20,15 +26,16 @@ export default function SearchForm() {
     if (!normalizedUsername) {
       setError(
         username.trim()
-          ? 'Geçerli bir GitHub kullanıcı adı veya github.com profil adresi girin.'
-          : 'GitHub kullanıcı adı boş olamaz.',
+          ? dictionary.search.invalidUsername
+          : dictionary.search.emptyUsername,
       );
       return;
     }
 
     setError(null);
     startTransition(() => {
-      router.push(`/${encodeURIComponent(normalizedUsername)}`);
+      const profilePath = `/${encodeURIComponent(normalizedUsername)}`;
+      router.push(withLocale(profilePath, locale));
     });
   }
 
@@ -37,17 +44,17 @@ export default function SearchForm() {
       <form
         onSubmit={onSubmit}
         className="mx-auto flex w-full max-w-2xl flex-col gap-3 sm:flex-row"
-        aria-label="GitHub portföyü oluştur"
+        aria-label={dictionary.search.formLabel}
         aria-busy={isPending}
         noValidate
       >
         <label htmlFor="github-username" className="sr-only">
-          GitHub kullanıcı adı
+          {dictionary.search.inputLabel}
         </label>
         <div className="flex-1">
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
@@ -61,7 +68,7 @@ export default function SearchForm() {
                 setUsername(event.target.value);
                 setError(null);
               }}
-              placeholder="GitHub kullanıcı adı... (örn. torvalds)"
+              placeholder={dictionary.search.placeholder}
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}
@@ -69,23 +76,45 @@ export default function SearchForm() {
               maxLength={200}
               disabled={isPending}
               aria-invalid={Boolean(error)}
-              aria-describedby={error ? 'github-username-error' : undefined}
+              aria-errormessage={error ? 'github-username-error' : undefined}
+              aria-describedby={[error ? 'github-username-error' : null, 'github-examples']
+                .filter(Boolean)
+                .join(' ') || undefined}
               className="input-premium w-full rounded-xl py-4 pl-12 pr-4 text-base text-text-primary placeholder:text-text-muted"
             />
           </div>
           {error && (
-            <p id="github-username-error" className="mt-2 text-sm text-red-400" role="alert">
-              <span aria-hidden="true">{error}</span>
-              <span className="sr-only">{error}</span>
+            <p
+              id="github-username-error"
+              className="mt-2 text-sm text-red-400"
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
+              {error}
+            </p>
+          )}
+          {isPending && (
+            <p
+              id="github-username-status"
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {dictionary.search.creating}
             </p>
           )}
         </div>
         <button
           type="submit"
           disabled={isPending}
+          aria-describedby={isPending ? 'github-username-status' : undefined}
           className="btn-primary relative z-10 flex min-w-[140px] items-center justify-center gap-2 rounded-xl px-8 py-4 text-base font-semibold text-white disabled:cursor-wait disabled:opacity-70"
         >
-          <span className="relative z-10">{isPending ? 'Oluşturuluyor…' : 'Oluştur'}</span>
+          <span className="relative z-10">
+            {isPending ? dictionary.search.creating : dictionary.search.create}
+          </span>
           {isPending ? (
             <svg className="relative z-10 h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" />
@@ -100,11 +129,18 @@ export default function SearchForm() {
         </button>
       </form>
 
-      <div id="github-examples" className="mt-6 flex flex-wrap items-center justify-center gap-2 text-sm text-text-muted">
-        <span>Örnekler:</span>
+      <div
+        id="github-examples"
+        className="mt-6 flex flex-wrap items-center justify-center gap-2 text-sm text-text-muted"
+      >
+        <span>{dictionary.search.examples}</span>
         {EXAMPLES.map((example, index) => (
           <span key={example.username} className="inline-flex items-center gap-2">
-            <Link prefetch={false} href={`/${encodeURIComponent(example.username)}`} className="font-mono text-accent transition-colors hover:text-emerald-300">
+            <Link
+              prefetch={false}
+              href={withLocale(`/${encodeURIComponent(example.username)}`, locale)}
+              className="font-mono text-accent transition-colors hover:text-emerald-300"
+            >
               /{example.username}
             </Link>
             {index < EXAMPLES.length - 1 && <span className="text-border" aria-hidden="true">·</span>}
@@ -114,4 +150,3 @@ export default function SearchForm() {
     </div>
   );
 }
-
