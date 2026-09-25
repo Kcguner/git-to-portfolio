@@ -22,6 +22,8 @@ All notable changes to Git-to-Portfolio are documented in this file. The format 
 
 ### Changed
 
+- The print stylesheet is now designed for paper rather than inherited from the screen. It sets `@page` margins, rebases headings in points so they scale with the 11pt body instead of rendering a 36px name at roughly 27pt, cuts the vertical rhythm in millimetres, pins the repository grid to two columns instead of letting the paper width decide, releases the three-line description clamp, keeps headings off the foot of a page, and prints the portfolio URL, which a sheet of paper cannot show on its own.
+- The screen-only context strip above the profile card is no longer printed, so a printed page opens with the person's name. Everything it said is repeated by the profile card and the footer.
 - `NEXT_PUBLIC_SITE_URL` and `NEXT_PUBLIC_GITHUB_REPO_URL` are now `SITE_URL` and `GITHUB_REPO_URL`. Both values are only ever read by Server Components and metadata routes, so the `NEXT_PUBLIC_` prefix only served to inline them into the client bundle and to trip Vercel's public-variable confirmation. The old names are still read, so an existing deployment keeps working.
 - Repository requests ask for the number of repositories the page displays instead of always requesting 100. The Open Graph image previously downloaded 100 repository objects to use three.
 - The advertised version is kept in sync with `package.json` by a test instead of being hardcoded as `v1.0`, and the copyright year is derived from the current date.

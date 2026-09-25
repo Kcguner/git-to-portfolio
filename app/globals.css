@@ -220,6 +220,11 @@
     box-shadow: 0 4px 20px -4px rgba(16, 185, 129, 0.4);
   }
 
+  /* Content that only makes sense on paper, such as the profile URL. */
+  .print-only {
+    display: none;
+  }
+
   .tag {
     border: 1px solid rgba(16, 185, 129, 0.2);
     background: rgba(16, 185, 129, 0.1);
@@ -307,6 +312,75 @@
 }
 
 @media print {
+  /*
+   * Paper geometry and type scale.
+   *
+   * The screen layout is tuned for pixels: rem-based headings up to 36px and
+   * screen-sized vertical rhythm. On paper both are wrong. A 36px name is
+   * roughly 27pt and swallows the first page, and the screen's generous
+   * section spacing costs a whole sheet. Headings are rebased in points so
+   * they scale with the 11pt body, and the rhythm is cut in millimetres.
+   */
+  @page {
+    margin: 14mm 12mm;
+  }
+
+  h1 {
+    font-size: 19pt !important;
+    line-height: 1.15 !important;
+  }
+
+  h2 {
+    font-size: 12.5pt !important;
+    line-height: 1.25 !important;
+  }
+
+  h3 {
+    font-size: 11pt !important;
+  }
+
+  main {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  main > * + * {
+    margin-top: 7mm !important;
+  }
+
+  .card-premium {
+    padding: 6mm !important;
+  }
+
+  /* A heading must never be the last thing on a page. */
+  h1,
+  h2,
+  h3,
+  .section-label {
+    break-after: avoid-page;
+  }
+
+  /* The screen column count follows the viewport, and a print viewport is the
+     paper width, so it is pinned instead: two columns reads well on A4. */
+  section[aria-labelledby="featured-repos-title"] > ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6mm !important;
+  }
+
+  /* Descriptions are clamped on screen to keep the cards even. Paper has room,
+     and the reserved three-line box is pure wasted paper. */
+  .line-clamp-3 {
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    -webkit-box-orient: initial !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+  }
+
+  .print-only {
+    display: inline !important;
+  }
+
   .no-print,
   nav.no-print {
     display: none !important;

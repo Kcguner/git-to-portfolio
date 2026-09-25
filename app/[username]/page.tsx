@@ -231,7 +231,10 @@ export default async function UserPage({ params, searchParams }: PageProps) {
       />
 
       <main className="relative mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-        <div className="mb-6 sm:mb-8">
+        {/* Screen-only context strip. On paper it would sit above the person's
+            name and compete with it, and everything it says is repeated by the
+            profile card below and the footer, so it is not printed. */}
+        <div className="no-print mb-6 sm:mb-8">
           <div className="flex items-center justify-between gap-3">
             <span className="section-label">
               {dictionary.profile.profileOf}
@@ -255,6 +258,8 @@ export default async function UserPage({ params, searchParams }: PageProps) {
 
         <footer className="mt-12 border-t border-border/50 pt-6 text-center text-xs text-text-muted">
           {dictionary.profile.footer}
+          {/* A printed sheet has no address bar, so the page states its own URL. */}
+          <span className="print-only"> · {shareUrl}</span>
         </footer>
       </main>
     </div>
