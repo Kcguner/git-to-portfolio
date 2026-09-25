@@ -198,7 +198,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {/* Two cards in a max-w-6xl panel would sit far apart, so the row is
+                capped and centred to keep the cards at a readable width. */}
+            <div className="mx-auto grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
               {EXAMPLES.map((example) => (
                 <Link
                   prefetch={false}

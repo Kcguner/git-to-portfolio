@@ -6,9 +6,8 @@ Herhangi bir herkese açık GitHub profilini sade, paylaşılabilir ve yazdırma
 
 Hemen deneyebileceğiniz gerçek portföyler:
 
+- [`/kcguner`](https://git-to-portfolio.vercel.app/kcguner) — bu sitenin yaratıcısı
 - [`/torvalds`](https://git-to-portfolio.vercel.app/torvalds) — Linux'un yaratıcısı
-- [`/gaearon`](https://git-to-portfolio.vercel.app/gaearon) — React ve Redux
-- [`/yyx990803`](https://git-to-portfolio.vercel.app/yyx990803) — Vue.js'in yaratıcısı
 
 ![CI](https://github.com/Kcguner/git-to-portfolio/actions/workflows/ci.yml/badge.svg) ![Lisans: MIT](https://img.shields.io/github/license/Kcguner/git-to-portfolio) ![Next.js 16](https://img.shields.io/badge/Next.js-16.3.6-000000?style=flat-square&logo=next.js) ![Node 20](https://img.shields.io/badge/node-%3E%3D20.9-5FA04E?style=flat-square)
 

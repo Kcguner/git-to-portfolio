@@ -44,6 +44,7 @@ All notable changes to Git-to-Portfolio are documented in this file. The format 
 
 ### Added
 
+- The site owner leads the home page example grid and the example links under the search box, described in all four languages. The example grid is capped and centred at two cards so it does not sprawl.
 - Accessible profile sharing through the native Web Share API, with localized Clipboard API fallback and visible error feedback.
 - Generated `app/manifest.ts` and web app identity metadata.
 - Locale-aware canonical/hreflang metadata, `x-default`, localized 404/error screens and a generated web application manifest.

@@ -82,9 +82,8 @@ const turkish = {
     profilesDescription: 'Bir tıkla gerçek portföyleri incele.',
     liveExamples: 'Canlı örnekler',
     exampleDescriptions: {
+      kcguner: 'Bu sitenin yaratıcısı',
       torvalds: 'Linux yaratıcısı',
-      gaearon: 'Full-stack geliştirici',
-      yyx990803: 'Vue.js yaratıcısı',
     } satisfies Record<ExampleDescriptionKey, string>,
     howLink: 'Nasıl çalışır?',
     source: 'Kaynak',
@@ -205,9 +204,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       profilesDescription: 'Explore real portfolios with one click.',
       liveExamples: 'Live examples',
       exampleDescriptions: {
+        kcguner: 'Creator of this site',
         torvalds: 'Creator of Linux',
-        gaearon: 'Full-stack developer',
-        yyx990803: 'Creator of Vue.js',
       },
       howLink: 'How it works',
       source: 'Source',
@@ -323,9 +321,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       profilesDescription: 'Entdecke echte Portfolios mit einem Klick.',
       liveExamples: 'Live-Beispiele',
       exampleDescriptions: {
+        kcguner: 'Ersteller dieser Seite',
         torvalds: 'Schöpfer von Linux',
-        gaearon: 'Full-Stack-Entwickler',
-        yyx990803: 'Schöpfer von Vue.js',
       },
       howLink: 'So funktioniert’s',
       source: 'Quellcode',
@@ -441,9 +438,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       profilesDescription: 'Explora portfolios reales con un clic.',
       liveExamples: 'Ejemplos en vivo',
       exampleDescriptions: {
+        kcguner: 'Creador de este sitio',
         torvalds: 'Creador de Linux',
-        gaearon: 'Desarrollador full-stack',
-        yyx990803: 'Creador de Vue.js',
       },
       howLink: 'Cómo funciona',
       source: 'Código fuente',

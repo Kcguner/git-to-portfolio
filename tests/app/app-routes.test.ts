@@ -14,7 +14,8 @@ import HomePage, { generateMetadata as HomeMetadata } from "../../app/page";
 import manifest from "../../app/manifest";
 import robots from "../../app/robots";
 import sitemap from "../../app/sitemap";
-import { LOCALES, LOCALE_TAGS, withLocale } from "../../lib/i18n";
+import { LOCALES, LOCALE_TAGS, withLocale, dictionaries } from "../../lib/i18n";
+import { EXAMPLES } from "../../lib/examples";
 import { getSiteUrl } from "../../lib/site";
 
 const originalSiteUrl = process.env.SITE_URL;
@@ -38,9 +39,20 @@ describe("home page", () => {
 
     expect(getSiteUrl()).toBe("https://portfolio.example.test");
     expect(html).toContain("Your portfolio in three steps");
-    expect(html).toContain("/torvalds?lang=en");
-    expect(html).toContain("/gaearon?lang=en");
-    expect(html).toContain("/yyx990803?lang=en");
+
+    // Derived from EXAMPLES so adding or removing an example cannot leave a
+    // stale expectation behind.
+    expect(EXAMPLES.length).toBeGreaterThan(0);
+    for (const example of EXAMPLES) {
+      expect(html).toContain(`/${example.username}?lang=en`);
+      expect(html).toContain(dictionaries.en.home.exampleDescriptions[example.descriptionKey]);
+    }
+  });
+
+  it("leads the example list with the site owner", () => {
+    // The owner is the point of the first card, so the order is part of the
+    // contract rather than an accident of the array.
+    expect(EXAMPLES[0].descriptionKey).toBe("kcguner");
   });
 
   it("falls back to Turkish for an unsupported locale", async () => {
