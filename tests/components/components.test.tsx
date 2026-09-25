@@ -2,12 +2,12 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AppError from "../../app/error";
-import { LocalizedNotFound } from "../../components/DocumentLocale";
 import LocaleSwitcher from "../../components/LocaleSwitcher";
 import PrintButton from "../../components/PrintButton";
 import ProfileCard from "../../components/ProfileCard";
 import RepoGrid from "../../components/RepoGrid";
 import SearchForm from "../../components/SearchForm";
+import SiteHeader from "../../components/SiteHeader";
 import type { GitHubProfile, GitHubRepo } from "../../lib/github";
 
 const navigationMocks = vi.hoisted(() => ({
@@ -108,16 +108,6 @@ describe("client components", () => {
     });
   });
 
-  it("localizes a not-found page without mutating the document title", () => {
-    document.title = "Git-to-Portfolio";
-    render(<LocalizedNotFound kind="user" />);
-
-    expect(screen.getByRole("heading", { name: "User not found" })).toBeInTheDocument();
-    // The localized <title> is emitted by the not-found segments' server-side
-    // generateMetadata, so the client component must not fight it.
-    expect(document.title).toBe("Git-to-Portfolio");
-  });
-
   it("does not navigate for the current or an unsupported locale", () => {
     render(<LocaleSwitcher locale="en" />);
     const select = screen.getByRole("combobox", { name: "Select language" });
@@ -188,6 +178,36 @@ describe("client components", () => {
 
 describe("server-compatible presentation components", () => {
   afterEach(cleanup);
+
+  it("keeps the repository and documentation links alongside route actions", () => {
+    // SiteHeader used to treat its children as a replacement for the default
+    // links, so every profile page lost the link back to the project's source.
+    render(
+      <SiteHeader
+        locale="en"
+        actions={<button type="button">Share</button>}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/Kcguner/git-to-portfolio"
+    );
+    expect(screen.getByRole("link", { name: "Documentation" })).toHaveAttribute(
+      "href",
+      "/?lang=en#nasil-calisir"
+    );
+    expect(screen.getByRole("link", { name: "Git-to-Portfolio home" })).toBeInTheDocument();
+  });
+
+  it("renders the default header without any route actions", () => {
+    render(<SiteHeader locale="tr" />);
+
+    expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dokümantasyon" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Dil seçin" })).toBeInTheDocument();
+  });
 
   it("renders a safe profile, external links, and only the top three languages", () => {
     render(

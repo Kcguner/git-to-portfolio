@@ -10,6 +10,8 @@ All notable changes to Git-to-Portfolio are documented in this file. The format 
 - Profile pages render a single `<h1>` again. The page header title was demoted to a paragraph, and the profile page heading is now visible at every breakpoint instead of disappearing on small screens.
 - The root layout renders the correct `<html lang>` on the server instead of shipping `lang="tr"` for every language and patching it from a client effect. `proxy.js` resolves the locale per request and forwards it internally; client-side navigation still corrects the attribute because RSC payloads do not re-render the layout.
 - 404 pages emit a localized `<title>` from the server. Both not-found segments previously shipped hardcoded English titles and relied on a `document.title` mutation that fought the Metadata API and only ran after hydration.
+- The 404 body no longer depends on a client component. The not-found segments read the resolved locale from the request header and render `NotFoundView` directly, so the view has no `useSearchParams` and no Suspense boundary, and the RSC payload carries plain server-rendered markup. Note that the visible body still arrives through that payload rather than the initial HTML: `notFound()` throws `NEXT_HTTP_ERROR_FALLBACK;404` and Next.js serves the not-found tree through its HTTP access fallback.
+- Portfolio pages keep the header's repository and documentation links. `SiteHeader` treated its children as a replacement for the default links, so every profile page had no way back to the project's source; route-specific controls are now passed as `actions` and rendered alongside the links.
 - `next/image` can no longer be handed an avatar host that is not allowlisted, which threw and took down the entire portfolio. `images.remotePatterns` now covers the hosts GitHub actually returns, and an unknown host falls back to an initial-letter avatar that cannot fail.
 - Featured-language bars are no longer blank when printed. Browsers strip background gradients, so the print stylesheet now renders the track and fill as flat greys with borders while the numeric percentage stays legible.
 - Several near-white elements printed as invisible white-on-white, including repository names rendered as `div`s, the search submit button and the muted placeholder text. They are now forced to legible colours in print media.
@@ -27,7 +29,7 @@ All notable changes to Git-to-Portfolio are documented in this file. The format 
 
 ### Removed
 
-- Portfolio page loading skeletons. A `loading.tsx` enables streamed rendering, which commits the HTTP status before the page resolves, so an unknown username answered `200` with only a skeleton instead of a real `404`.
+- Portfolio page loading skeletons. A `loading.tsx` enables streamed rendering, and per the Next.js status-code rules a streamed response commits `200` before the page resolves, so an unknown username answered `200` with only a skeleton. The HTTP status could not be updated once the headers were sent, which some crawlers label a soft 404.
 - Dead code: the unused `metadata.fallbackDescription` and `header.info` dictionary entries in all four locales, the unused non-localized `formatDate` in `lib/skills.ts` that duplicated `RepoGrid`'s localized formatter, the hardcoded Turkish `description` field in `lib/examples.ts`, the unreferenced `.print-break-before` print class, the `favicon.ico` matcher exclusion for a file the project does not have, and the Playwright entries in `.gitignore` for a runner the project does not use.
 
 ### Security

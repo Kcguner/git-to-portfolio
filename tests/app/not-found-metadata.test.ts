@@ -8,8 +8,8 @@ vi.mock('next/headers', () => ({
   headers: headerMocks.headers,
 }));
 
-import { generateMetadata as generatePageNotFound } from '../../app/not-found';
-import { generateMetadata as generateUserNotFound } from '../../app/[username]/not-found';
+import { generateMetadata as generatePageNotFound, default as PageNotFound } from '../../app/not-found';
+import { generateMetadata as generateUserNotFound, default as UserNotFound } from '../../app/[username]/not-found';
 
 const NO_INDEX = {
   index: false,
@@ -87,5 +87,46 @@ describe('not-found metadata', () => {
   ])('keeps the %s 404 out of the index', async (_label, generate) => {
     setLocaleHeader('en');
     expect((await generate()).robots).toMatchObject(NO_INDEX);
+  });
+});
+
+describe('not-found body', () => {
+  beforeEach(() => {
+    headerMocks.headers.mockReset();
+  });
+
+  // The body used to be a client component reading useSearchParams, so the
+  // visible markup only existed after hydration. Rendering it from the
+  // request header puts it in the static HTML the 404 response ships.
+  it.each([
+    ['tr', 'Aradığın sayfa yok', 'Kullanıcı bulunamadı'],
+    ['en', 'The page you requested does not exist', 'User not found'],
+    ['de', 'Die gewünschte Seite gibt es nicht', 'Benutzer nicht gefunden'],
+    ['es', 'La página que buscas no existe', 'Usuario no encontrado'],
+  ])('renders the %s 404 body server-side', async (locale, pageHeading, userHeading) => {
+    setLocaleHeader(locale);
+    const { renderToStaticMarkup } = await import('react-dom/server');
+
+    const pageHtml = renderToStaticMarkup(await PageNotFound());
+    const userHtml = renderToStaticMarkup(await UserNotFound());
+
+    expect(pageHtml).toContain('<h1');
+    expect(pageHtml).toContain(pageHeading);
+    expect(userHtml).toContain('<h1');
+    expect(userHtml).toContain(userHeading);
+    // Exactly one heading and one home link in each document.
+    expect(pageHtml.match(/<h1/g)).toHaveLength(1);
+    expect(userHtml.match(/<h1/g)).toHaveLength(1);
+    // The home link keeps the resolved locale.
+    expect(pageHtml).toContain(locale === 'tr' ? 'href="/"' : `href="/?lang=${locale}"`);
+  });
+
+  it('falls back to Turkish when the locale header is missing', async () => {
+    setLocaleHeader(null);
+    const { renderToStaticMarkup } = await import('react-dom/server');
+
+    const html = renderToStaticMarkup(await UserNotFound());
+    expect(html).toContain('Kullanıcı bulunamadı');
+    expect(html).toContain('href="/"');
   });
 });

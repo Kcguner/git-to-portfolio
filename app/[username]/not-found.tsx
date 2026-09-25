@@ -1,9 +1,8 @@
-import { Suspense } from "react";
 import { headers } from "next/headers";
 import type { Metadata } from "next";
-import { DEFAULT_LOCALE, getDictionary } from "@/lib/i18n";
+import { getDictionary } from "@/lib/i18n";
 import { getLocaleFromHeaderValue, LOCALE_HEADER } from "@/lib/locale-negotiation";
-import { LocalizedNotFound, NotFoundView } from "@/components/DocumentLocale";
+import NotFoundView from "@/components/NotFoundView";
 
 const NO_INDEX = {
   index: false,
@@ -14,10 +13,11 @@ const NO_INDEX = {
   },
 } as const;
 
-// `not-found.tsx` receives neither params nor searchParams, so the localized
-// title comes from the same `x-site-locale` request header the root layout
-// reads. Proxy resolves it before the route renders, so the SSR <title> is
-// already correct instead of being patched in a client layout effect.
+// `not-found.tsx` receives neither params nor searchParams, so the locale and
+// the localized title both come from the `x-site-locale` request header the
+// root layout reads. Proxy resolves it before the route renders, so both the
+// SSR <title> and the visible markup are correct before hydration. The body
+// needs no client hook, so it needs no Suspense boundary either.
 async function getRequestLocale() {
   return getLocaleFromHeaderValue((await headers()).get(LOCALE_HEADER));
 }
@@ -37,10 +37,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function UserNotFound() {
-  return (
-    <Suspense fallback={<NotFoundView locale={DEFAULT_LOCALE} kind="user" />}>
-      <LocalizedNotFound kind="user" />
-    </Suspense>
-  );
+export default async function UserNotFound() {
+  const locale = await getRequestLocale();
+  return <NotFoundView locale={locale} kind="user" />;
 }

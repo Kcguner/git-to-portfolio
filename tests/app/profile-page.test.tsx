@@ -34,7 +34,8 @@ vi.mock("../../lib/github", async () => {
 });
 
 vi.mock("../../components/SiteHeader", () => ({
-  default: ({ children }: { children: React.ReactNode }) => <header>{children}</header>,
+  // Renders the route actions so the tests can assert what the page passes in.
+  default: ({ actions }: { actions?: React.ReactNode }) => <header>{actions}</header>,
 }));
 
 vi.mock("../../components/PrintButton", () => ({

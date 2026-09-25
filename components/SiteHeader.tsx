@@ -6,7 +6,13 @@ import LocaleSwitcher from "./LocaleSwitcher";
 
 type SiteHeaderProps = {
   locale: Locale;
-  children?: ReactNode;
+  /**
+   * Route-specific actions rendered before the documentation link. The
+   * repository and documentation links are always shown: a profile page used
+   * to replace them entirely, which left visitors with no way back to the
+   * project's source.
+   */
+  actions?: ReactNode;
 };
 
 function GitHubIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -36,7 +42,7 @@ export function Brand({ locale }: { locale: Locale }) {
   );
 }
 
-export default function SiteHeader({ locale, children }: SiteHeaderProps) {
+export default function SiteHeader({ locale, actions }: SiteHeaderProps) {
   const dictionary = getDictionary(locale);
   const githubRepoUrl = getGitHubRepoUrl();
 
@@ -46,33 +52,30 @@ export default function SiteHeader({ locale, children }: SiteHeaderProps) {
         <Brand locale={locale} />
         <div className="flex shrink-0 items-center gap-2">
           <LocaleSwitcher locale={locale} />
-          {children ?? (
-            <>
-              {githubRepoUrl && (
-                <a
-                  href={githubRepoUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hidden items-center gap-2 px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary sm:inline-flex"
-                >
-                  <GitHubIcon />
-                  GitHub
-                </a>
-              )}
-              <Link
-                href={`${withLocale("/", locale)}#nasil-calisir`}
-                className="hidden items-center gap-2 rounded-lg border border-border bg-surface-elevated px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-border-hover md:inline-flex"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                </svg>
-                <span>{dictionary.header.documentation}</span>
-              </Link>
-            </>
+          {actions}
+          {githubRepoUrl && (
+            <a
+              href={githubRepoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="hidden items-center gap-2 px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary lg:inline-flex"
+            >
+              <GitHubIcon />
+              GitHub
+            </a>
           )}
+          <Link
+            href={`${withLocale("/", locale)}#nasil-calisir`}
+            className="hidden items-center gap-2 rounded-lg border border-border bg-surface-elevated px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-border-hover md:inline-flex"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            <span>{dictionary.header.documentation}</span>
+          </Link>
         </div>
       </div>
     </nav>

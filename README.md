@@ -170,7 +170,7 @@ GitHub Actions runs typecheck, lint, tests, the production dependency audit and 
 
 ## Known Limitations
 
-- The portfolio pages have no loading skeleton. A `loading.tsx` would enable streamed rendering, which commits the HTTP status before the page resolves: an unknown username would then answer `200` with only a skeleton instead of a real `404`. Correct status codes on the primary route win over a loading animation.
+- The portfolio pages have no loading skeleton. A `loading.tsx` would enable streamed rendering, and Next.js returns `200` for streamed responses because the headers are already sent before the page resolves. An unknown username would then answer `200` with only a skeleton, which some crawlers label a soft 404. Correct status codes on the primary route win over a loading animation.
 - There is no `Accept: application/json` API route and no server-side caching layer of its own, so the GitHub quota is the only cache. Set `GITHUB_TOKEN` for public deployments.
-- The not-found UI is a client component, so the 404 response body is hydrated on the client. The HTTP status and the `<title>` are correct in the initial HTML; the visible markup arrives after hydration.
+- The 404 status, the localized `<title>` and the `noindex` metadata are all correct in the initial HTML. The visible 404 body arrives through the RSC payload and is hydrated on the client: `notFound()` works by throwing `NEXT_HTTP_ERROR_FALLBACK;404`, and Next.js serves the not-found tree through its HTTP access fallback. Keeping the body free of client hooks still matters — it means the payload carries plain server-rendered markup instead of a client component.
 - The `<html lang>` attribute is only re-resolved for hard navigations. The client corrects it after in-app navigation, but the server-rendered value of a client-side route change is never re-emitted.

@@ -16,10 +16,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: navigationMocks.searchParams,
 }));
 
-import DocumentLocale, {
-  LocalizedNotFound,
-  NotFoundView,
-} from "../../components/DocumentLocale";
+import DocumentLocale from "../../components/DocumentLocale";
+import NotFoundView from "../../components/NotFoundView";
 
 const EXPECTED_NOT_FOUND = {
   tr: {
@@ -167,40 +165,23 @@ describe("NotFoundView", () => {
       unmount();
     }
   });
-});
 
-describe("LocalizedNotFound", () => {
-  beforeEach(() => {
-    navigationMocks.searchParams.mockReset().mockReturnValue(new URLSearchParams());
+  it("exposes exactly one heading and one home link", () => {
+    render(<NotFoundView locale="en" kind="user" />);
+
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+    expect(screen.getByRole("heading")).toHaveTextContent("User not found");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
-  afterEach(cleanup);
+  it("is free of client hooks, so it renders into static HTML", async () => {
+    // No `useSearchParams` in the 404 tree is what allows the not-found
+    // segments to render their body on the server instead of bailing out to
+    // client rendering. This asserts that property directly.
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const html = renderToStaticMarkup(<NotFoundView locale="de" kind="user" />);
 
-  it("picks the locale from the lang query value", () => {
-    navigationMocks.setSearchParams("lang=de");
-
-    render(<LocalizedNotFound kind="user" />);
-
-    expect(
-      screen.getByRole("heading", { name: EXPECTED_NOT_FOUND.de.userTitle })
-    ).toBeInTheDocument();
-  });
-
-  it("falls back to the default locale without a lang query value", () => {
-    render(<LocalizedNotFound kind="page" />);
-
-    expect(
-      screen.getByRole("heading", { name: EXPECTED_NOT_FOUND.tr.pageTitle })
-    ).toBeInTheDocument();
-  });
-
-  it("leaves document.title alone so the server-rendered title stays authoritative", () => {
-    const serverTitle = "The page you requested does not exist | Git-to-Portfolio";
-    document.title = serverTitle;
-    navigationMocks.setSearchParams("lang=en");
-
-    render(<LocalizedNotFound kind="page" />);
-
-    expect(document.title).toBe(serverTitle);
+    expect(html).toContain("Benutzer nicht gefunden");
+    expect(html).toContain("<h1");
   });
 });
