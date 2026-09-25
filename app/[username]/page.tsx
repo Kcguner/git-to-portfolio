@@ -11,15 +11,25 @@ import type { GitHubProfile, GitHubRepo } from '@/lib/github';
 import {
   getDictionary,
   getLocale,
-  getLocaleAlternates,
-  getProfileOpenGraphImagePath,
-  OPEN_GRAPH_LOCALES,
+  getProfilePathname,
   withLocale,
   type SearchParams,
 } from '@/lib/i18n';
+import {
+  getAlternateOpenGraphLocales,
+  getLocaleAlternatesMetadata,
+  getOpenGraphLocale,
+  getProfileJsonLd,
+  getProfileKeywords,
+  getProfileOpenGraphImagePath,
+  getSocialImageMetadata,
+  INDEXABLE_ROBOTS,
+  NO_INDEX_ROBOTS,
+  SITE_NAME,
+} from '@/lib/seo';
 import { calculateTopLanguages } from '@/lib/skills';
-import { getSiteUrl } from '@/lib/site';
 import { normalizeUsername } from '@/lib/username';
+import JsonLd from '@/components/JsonLd';
 import ProfileCard from '@/components/ProfileCard';
 import RepoGrid from '@/components/RepoGrid';
 import PrintButton from '@/components/PrintButton';
@@ -63,25 +73,6 @@ function describeGitHubFailure(error: unknown): string {
   return 'unknown';
 }
 
-function getCanonicalUrl(pathname: string, locale: ReturnType<typeof getLocale>): string {
-  // Canonical URLs should not include tracking/debug query parameters.
-  return `${getSiteUrl()}${withLocale(pathname, locale)}`;
-}
-
-function getMetadataAlternates(pathname: string, locale: ReturnType<typeof getLocale>) {
-  const languages = Object.fromEntries(
-    Object.entries(getLocaleAlternates(pathname)).map(([tag, url]) => [
-      tag,
-      `${getSiteUrl()}${url}`,
-    ])
-  );
-
-  return {
-    canonical: getCanonicalUrl(pathname, locale),
-    languages,
-  };
-}
-
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const [resolvedUsername, query] = await Promise.all([resolveUsername(params), searchParams]);
   const locale = getLocale(query);
@@ -90,11 +81,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (!resolvedUsername) {
     return {
       title: dictionary.metadata.userNotFoundTitle,
-      robots: {
-        index: false,
-        follow: false,
-        googleBot: { index: false, follow: false },
-      },
+      robots: NO_INDEX_ROBOTS,
     };
   }
 
@@ -103,50 +90,48 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   try {
     const profile = await getProfile(username);
     const canonicalUsername = normalizeUsername(profile.login) ?? username;
-    const canonicalUrl = getCanonicalUrl(`/${encodeURIComponent(canonicalUsername)}`, locale);
+    const pathname = getProfilePathname(canonicalUsername);
+    const alternates = getLocaleAlternatesMetadata(pathname, locale);
     const displayName = profile.name?.trim() || profile.login;
     const description = profile.bio?.trim() || dictionary.metadata.portfolioDescription(displayName);
     const title = dictionary.metadata.portfolioTitle(displayName);
-    const imageUrl = getProfileOpenGraphImagePath(canonicalUsername);
+    const images = getSocialImageMetadata(
+      getProfileOpenGraphImagePath(canonicalUsername, locale),
+      dictionary.metadata.profileOgImage.alt(displayName),
+    );
 
     return {
       title,
       description,
-      alternates: getMetadataAlternates(`/${encodeURIComponent(canonicalUsername)}`, locale),
+      keywords: getProfileKeywords(locale, displayName),
+      alternates,
       openGraph: {
         type: 'profile',
-        url: canonicalUrl,
-        siteName: 'Git-to-Portfolio',
-        locale: OPEN_GRAPH_LOCALES[locale],
+        url: alternates.canonical,
+        siteName: SITE_NAME,
+        locale: getOpenGraphLocale(locale),
+        alternateLocale: getAlternateOpenGraphLocales(locale),
+        // Only the handle is a real `og:profile` field here: the display name
+        // is frequently a full name, which would have to be split to fill
+        // first_name/last_name, and guessing a split would be wrong.
+        username: canonicalUsername,
         title,
         description,
+        images,
       },
       twitter: {
         card: 'summary_large_image',
         title,
         description,
-        images: [imageUrl],
+        images,
       },
-      robots: {
-        index: true,
-        follow: true,
-        googleBot: {
-          index: true,
-          follow: true,
-          'max-image-preview': 'large',
-          'max-snippet': -1,
-        },
-      },
+      robots: INDEXABLE_ROBOTS,
     };
   } catch {
     return {
       title: dictionary.metadata.userNotFoundTitle,
       description: dictionary.notFound.userDescription,
-      robots: {
-        index: false,
-        follow: false,
-        googleBot: { index: false, follow: false },
-      },
+      robots: NO_INDEX_ROBOTS,
     };
   }
 }
@@ -159,7 +144,7 @@ export default async function UserPage({ params, searchParams }: PageProps) {
   const dictionary = getDictionary(locale);
   const username = resolvedUsername.normalized;
   if (resolvedUsername.requested !== username) {
-    permanentRedirect(withLocale(`/${encodeURIComponent(username)}`, locale, query));
+    permanentRedirect(withLocale(getProfilePathname(username), locale, query));
   }
 
   let profile: GitHubProfile;
@@ -172,7 +157,7 @@ export default async function UserPage({ params, searchParams }: PageProps) {
 
   const canonicalUsername = normalizeUsername(profile.login) ?? username;
   if (canonicalUsername !== username) {
-    permanentRedirect(withLocale(`/${encodeURIComponent(canonicalUsername)}`, locale, query));
+    permanentRedirect(withLocale(getProfilePathname(canonicalUsername), locale, query));
   }
 
   // The repository search endpoint is rate limited far more aggressively than
@@ -200,12 +185,40 @@ export default async function UserPage({ params, searchParams }: PageProps) {
   const topRepos = repos.slice(0, FEATURED_REPO_COUNT);
   const topLanguages = calculateTopLanguages(topRepos);
   const displayName = profile.name?.trim() || profile.login;
+  const description = profile.bio?.trim() || dictionary.metadata.portfolioDescription(displayName);
   const shareTitle = dictionary.metadata.portfolioTitle(displayName);
-  const shareText = profile.bio?.trim() || dictionary.metadata.portfolioDescription(displayName);
-  const shareUrl = getCanonicalUrl(`/${encodeURIComponent(profile.login)}`, locale);
+  const shareText = description;
+  const pathname = getProfilePathname(canonicalUsername);
+  // The localized, canonical URL of this page: what gets shared, printed and
+  // described in structured data.
+  const shareUrl = getLocaleAlternatesMetadata(pathname, locale).canonical;
 
   return (
     <div className="relative min-h-screen">
+      {/* The person, their featured repositories and their languages, in the
+          language of this page. */}
+      <JsonLd
+        data={getProfileJsonLd({
+          locale,
+          pathname,
+          displayName,
+          login: profile.login,
+          description,
+          avatarUrl: profile.avatar_url,
+          profileUrl: profile.html_url,
+          createdAt: profile.created_at,
+          blogUrl: profile.blog,
+          twitterUsername: profile.twitter_username,
+          repositories: topRepos.map((repo) => ({
+            name: repo.name,
+            url: repo.html_url,
+            description: repo.description,
+            language: repo.language,
+            stars: repo.stargazers_count,
+          })),
+          topLanguages,
+        })}
+      />
       <SiteHeader
         locale={locale}
         actions={(

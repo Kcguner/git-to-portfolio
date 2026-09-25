@@ -152,6 +152,38 @@ const turkish = {
     homeDescription: 'GitHub profilinden otomatik, sade ve yazdırılabilir bir geliştirici portföyü oluştur.',
     portfolioDescription: (name: string) => `${name} kullanıcısının GitHub portföyü, öne çıkan projeleri ve repo dilleri.`,
     portfolioTitle: (name: string) => `${name} | GitHub portföyü`,
+    homeKeywords: [
+      'GitHub portföy',
+      'GitHub portföy oluştur',
+      'GitHub profil portföy',
+      'geliştirici CV',
+      'yazdırılabilir CV',
+      'PDF CV oluştur',
+      'yazılımcı portföy sitesi',
+    ],
+    portfolioKeywords: (name: string) => [
+      `${name} GitHub portföyü`,
+      `${name} portföy`,
+      `${name} GitHub projeleri`,
+      `${name} projeleri`,
+      'GitHub portföy',
+      'geliştirici portföyü',
+    ],
+    ogImage: {
+      alt: 'Git-to-Portfolio — GitHub profilinden yazdırılabilir portföy oluşturma',
+      headline: 'GitHub’dan portföye.',
+      subtitle: 'Kullanıcı adını yaz, saniyeler içinde sade ve yazdırılabilir bir geliştirici portföyü oluştur.',
+      footer: 'GitHub profilinizi bir portföye dönüştürün.',
+      badge: 'SEO ve paylaşım hazır',
+    },
+    profileOgImage: {
+      alt: (name: string) => `${name} için GitHub portföyü`,
+      label: 'GitHub portföyü',
+      featured: 'Öne çıkan GitHub projeleri',
+      share: 'GitHub profil paylaşımı',
+      footer: 'Git-to-Portfolio ile oluşturuldu',
+      unknownUser: 'GitHub kullanıcısı',
+    },
   },
 };
 
@@ -274,6 +306,38 @@ export const dictionaries: Record<Locale, Dictionary> = {
       homeDescription: 'Create a simple, printable developer portfolio automatically from a GitHub profile.',
       portfolioDescription: (name) => `GitHub portfolio for ${name}, featuring highlighted projects and repository languages.`,
       portfolioTitle: (name) => `${name} | GitHub portfolio`,
+      homeKeywords: [
+        'GitHub portfolio',
+        'GitHub portfolio generator',
+        'GitHub profile portfolio',
+        'developer CV',
+        'printable resume',
+        'PDF resume',
+        'software developer portfolio',
+      ],
+      portfolioKeywords: (name) => [
+        `${name} GitHub portfolio`,
+        `${name} portfolio`,
+        `${name} GitHub projects`,
+        `${name} projects`,
+        'GitHub portfolio',
+        'developer portfolio',
+      ],
+      ogImage: {
+        alt: 'Git-to-Portfolio — create a printable portfolio from a GitHub profile',
+        headline: 'From GitHub to portfolio.',
+        subtitle: 'Enter a username and get a clean, printable developer portfolio in seconds.',
+        footer: 'Turn your GitHub profile into a portfolio.',
+        badge: 'SEO and sharing ready',
+      },
+      profileOgImage: {
+        alt: (name) => `GitHub portfolio of ${name}`,
+        label: 'GitHub portfolio',
+        featured: 'Featured GitHub projects',
+        share: 'GitHub profile share',
+        footer: 'Created with Git-to-Portfolio',
+        unknownUser: 'GitHub user',
+      },
     },
   },
   de: {
@@ -391,6 +455,38 @@ export const dictionaries: Record<Locale, Dictionary> = {
       homeDescription: 'Erstelle automatisch ein einfaches, druckbares Entwicklerportfolio aus einem GitHub-Profil.',
       portfolioDescription: (name) => `GitHub-Portfolio von ${name} mit ausgewählten Projekten und Repository-Sprachen.`,
       portfolioTitle: (name) => `${name} | GitHub-Portfolio`,
+      homeKeywords: [
+        'GitHub Portfolio',
+        'GitHub Portfolio erstellen',
+        'GitHub Profil Portfolio',
+        'Entwickler Lebenslauf',
+        'druckbarer Lebenslauf',
+        'PDF Lebenslauf',
+        'Programmierer Portfolio',
+      ],
+      portfolioKeywords: (name) => [
+        `${name} GitHub Portfolio`,
+        `${name} Portfolio`,
+        `${name} GitHub Projekte`,
+        `${name} Projekte`,
+        'GitHub Portfolio',
+        'Entwicklerportfolio',
+      ],
+      ogImage: {
+        alt: 'Git-to-Portfolio — druckbares Portfolio aus einem GitHub-Profil erstellen',
+        headline: 'Von GitHub zum Portfolio.',
+        subtitle: 'Gib einen Benutzernamen ein und erhalte in Sekunden ein sauberes, druckbares Entwicklerportfolio.',
+        footer: 'Verwandle dein GitHub-Profil in ein Portfolio.',
+        badge: 'SEO und Teilen bereit',
+      },
+      profileOgImage: {
+        alt: (name) => `GitHub-Portfolio von ${name}`,
+        label: 'GitHub-Portfolio',
+        featured: 'Ausgewählte GitHub-Projekte',
+        share: 'GitHub-Profil teilen',
+        footer: 'Erstellt mit Git-to-Portfolio',
+        unknownUser: 'GitHub-Benutzer',
+      },
     },
   },
   es: {
@@ -508,6 +604,38 @@ export const dictionaries: Record<Locale, Dictionary> = {
       homeDescription: 'Crea automáticamente un portfolio de desarrollador sencillo e imprimible a partir de un perfil de GitHub.',
       portfolioDescription: (name) => `Portfolio de GitHub de ${name}, con proyectos destacados y lenguajes de repositorios.`,
       portfolioTitle: (name) => `${name} | Portfolio de GitHub`,
+      homeKeywords: [
+        'portfolio de GitHub',
+        'crear portfolio de GitHub',
+        'portfolio desde un perfil de GitHub',
+        'CV de desarrollador',
+        'currículo imprimible',
+        'currículo en PDF',
+        'portfolio de programador',
+      ],
+      portfolioKeywords: (name) => [
+        `Portfolio de GitHub de ${name}`,
+        `Portfolio de ${name}`,
+        `Proyectos de GitHub de ${name}`,
+        `Proyectos de ${name}`,
+        'portfolio de GitHub',
+        'portfolio de desarrollador',
+      ],
+      ogImage: {
+        alt: 'Git-to-Portfolio — crea un portfolio imprimible a partir de un perfil de GitHub',
+        headline: 'De GitHub a portfolio.',
+        subtitle: 'Escribe un nombre de usuario y crea al instante un portfolio de desarrollador limpio e imprimible.',
+        footer: 'Convierte tu perfil de GitHub en un portfolio.',
+        badge: 'SEO y para compartir listo',
+      },
+      profileOgImage: {
+        alt: (name) => `Portfolio de GitHub de ${name}`,
+        label: 'Portfolio de GitHub',
+        featured: 'Proyectos destacados de GitHub',
+        share: 'Perfil de GitHub para compartir',
+        footer: 'Creado con Git-to-Portfolio',
+        unknownUser: 'Usuario de GitHub',
+      },
     },
   },
 };
@@ -535,6 +663,15 @@ export function getLocaleFromQueryValues(values: readonly string[]): Locale {
 
 export function getDictionary(locale: Locale): Dictionary {
   return dictionaries[locale];
+}
+
+/**
+ * Returns the canonical pathname of a profile. The username is percent-encoded
+ * here so every caller — links, canonicals, hreflang sets, the sitemap and the
+ * metadata image path — derives the same URL from the same login.
+ */
+export function getProfilePathname(username: string): string {
+  return `/${encodeURIComponent(username)}`;
 }
 
 function toSearchParams(search: string | SearchParams | null | undefined): URLSearchParams {
@@ -570,12 +707,16 @@ export function withLocale(
 }
 
 /**
- * Returns the stable file-based metadata image path for a profile. Profile OG
- * images intentionally do not include the locale query because this route is
- * language-independent and social crawlers may omit page search parameters.
+ * Returns the metadata image path for a profile.
+ *
+ * The locale is the *image route's* path segment rather than a page query
+ * parameter, because social crawlers fetch the image URL on its own and may
+ * omit the page's query string. That also keeps every language's card a
+ * separate, separately cacheable URL instead of one shared response that would
+ * have to be re-rendered per request.
  */
-export function getProfileOpenGraphImagePath(username: string): string {
-  return `/${encodeURIComponent(username)}/opengraph-image`;
+export function getProfileOpenGraphImagePath(username: string, locale: Locale): string {
+  return `${getProfilePathname(username)}/opengraph-image/${locale}`;
 }
 
 /**

@@ -1,17 +1,28 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import JsonLd from '@/components/JsonLd';
 import SearchForm from '@/components/SearchForm';
 import SiteHeader from '@/components/SiteHeader';
 import { EXAMPLES } from '@/lib/examples';
 import {
   getDictionary,
   getLocale,
-  getLocaleAlternates,
-  OPEN_GRAPH_LOCALES,
+  getProfilePathname,
   withLocale,
   type SearchParams,
 } from '@/lib/i18n';
-import { getGitHubRepoUrl, getSiteUrl } from '@/lib/site';
+import {
+  getAlternateOpenGraphLocales,
+  getHomeKeywords,
+  getHomeOpenGraphImagePath,
+  getHowToJsonLd,
+  getLocaleAlternatesMetadata,
+  getOpenGraphLocale,
+  getSocialImageMetadata,
+  INDEXABLE_ROBOTS,
+  SITE_NAME,
+} from '@/lib/seo';
+import { getGitHubRepoUrl } from '@/lib/site';
 
 const STEP_ICONS = ['user', 'image', 'document'] as const;
 
@@ -19,59 +30,41 @@ type HomePageProps = {
   searchParams: Promise<SearchParams>;
 };
 
-function getAbsoluteUrl(pathname: string): string {
-  return new URL(pathname, getSiteUrl()).toString();
-}
-
-function getMetadataAlternates(pathname: string, locale: ReturnType<typeof getLocale>) {
-  const relativeAlternates = getLocaleAlternates(pathname);
-  const languages = Object.fromEntries(
-    Object.entries(relativeAlternates).map(([tag, url]) => [tag, getAbsoluteUrl(url)])
-  );
-
-  return {
-    canonical: getAbsoluteUrl(withLocale(pathname, locale)),
-    languages,
-  };
-}
-
 export async function generateMetadata({ searchParams }: HomePageProps): Promise<Metadata> {
   const locale = getLocale(await searchParams);
   const dictionary = getDictionary(locale);
   const title = dictionary.metadata.homeTitle;
   const description = dictionary.metadata.homeDescription;
-  const canonicalUrl = getAbsoluteUrl(withLocale('/', locale));
-  const alternates = getMetadataAlternates('/', locale);
+  const alternates = getLocaleAlternatesMetadata('/', locale);
+  const images = getSocialImageMetadata(
+    getHomeOpenGraphImagePath(locale),
+    dictionary.metadata.ogImage.alt,
+  );
 
   return {
     title,
     description,
+    keywords: getHomeKeywords(locale),
     alternates,
     openGraph: {
       type: 'website',
-      url: canonicalUrl,
-      siteName: 'Git-to-Portfolio',
+      url: alternates.canonical,
+      siteName: SITE_NAME,
       title,
       description,
-      locale: OPEN_GRAPH_LOCALES[locale],
+      locale: getOpenGraphLocale(locale),
+      // Every other language the site serves, so a share in one of them gets
+      // that language's card rather than the default one.
+      alternateLocale: getAlternateOpenGraphLocales(locale),
+      images,
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: ['/opengraph-image'],
+      images,
     },
-    robots: {
-      index: true,
-      follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-        'max-image-preview': 'large',
-        'max-snippet': -1,
-        'max-video-preview': -1,
-      },
-    },
+    robots: INDEXABLE_ROBOTS,
   };
 }
 
@@ -122,6 +115,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   return (
     <div className="relative min-h-screen">
       <SiteHeader locale={locale} />
+
+      {/* The three steps rendered below, as structured data. */}
+      <JsonLd data={getHowToJsonLd(locale)} />
 
       <main className="relative overflow-hidden">
         <div className="orb orb-1" aria-hidden="true" />
@@ -205,7 +201,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 <Link
                   prefetch={false}
                   key={example.username}
-                  href={withLocale(`/${encodeURIComponent(example.username)}`, locale)}
+                  href={withLocale(getProfilePathname(example.username), locale)}
                   className="pill-btn group flex items-center justify-between rounded-xl px-6 py-5"
                 >
                   <div className="flex items-center gap-4">

@@ -162,3 +162,35 @@ export function getGitHubRepoUrl(): string {
     ) ?? DEFAULT_GITHUB_REPO_URL
   );
 }
+
+/**
+ * Normalizes a user-supplied external URL (a GitHub profile's `blog` field) to
+ * something safe to put in an `href` or a structured-data `sameAs` list.
+ *
+ * GitHub stores the blog field exactly as the user typed it, so it may be a
+ * bare host (`example.dev`) or carry a non-web scheme (`javascript:alert(1)`).
+ * A bare host is upgraded to HTTPS, any other scheme is rejected outright, and
+ * anything unparsable becomes `null` so the caller can drop the link instead of
+ * rendering a dead or dangerous one.
+ */
+export function getSafeExternalHttpUrl(
+  value: string | null | undefined
+): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  // A value that already declares a scheme is only accepted when that scheme is
+  // http(s); `javascript:`, `data:` and friends are refused below by never
+  // being upgraded and by failing the protocol check.
+  if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(trimmed) && !/^https?:/i.test(trimmed)) {
+    return null;
+  }
+
+  try {
+    const url = new URL(/^https?:/i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.hostname ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
