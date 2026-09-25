@@ -92,6 +92,7 @@ vi.mock("next/image", () => ({
 }));
 
 import UserPage, { generateMetadata } from "../../app/[username]/page";
+import { dictionaries } from "../../lib/i18n";
 import {
   GitHubSecondaryRateLimitError,
   GitHubUserNotFoundError,
@@ -143,6 +144,17 @@ const repos = [
 async function render(element: React.ReactElement) {
   const { renderToStaticMarkup } = await import("react-dom/server");
   return renderToStaticMarkup(element);
+}
+
+/**
+ * Parses the JSON-LD data blocks in the rendered markup, in document order. The
+ * pages are rendered without the root layout here, so a page contributes one
+ * block.
+ */
+function readJsonLdBlocks(html: string): unknown[] {
+  return [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map(
+    ([, payload]) => JSON.parse((payload ?? "").replace(/\\u003c/g, "<")),
+  );
 }
 
 type ActualProfileCardProps = Parameters<
@@ -369,8 +381,109 @@ describe("profile page", () => {
         "es-ES": "https://git-to-portfolio.vercel.app/octocat?lang=es",
       },
     });
-    expect(metadata.openGraph).toMatchObject({ locale: "en_US" });
-    expect(metadata.twitter?.images).toEqual(["/octocat/opengraph-image"]);
+    expect(metadata.keywords).toEqual(
+      dictionaries.en.metadata.portfolioKeywords("The Octocat"),
+    );
+    expect(metadata.openGraph).toMatchObject({
+      locale: "en_US",
+      alternateLocale: ["tr_TR", "de_DE", "es_ES"],
+      username: "octocat",
+    });
+    // The card is addressed per language, so a crawler that drops the page
+    // query still gets this page's language rendered in the image.
+    expect(metadata.twitter?.images).toEqual([
+      {
+        url: "https://git-to-portfolio.vercel.app/octocat/opengraph-image/en",
+        alt: "GitHub portfolio of The Octocat",
+        type: "image/png",
+        width: 1200,
+        height: 630,
+      },
+    ]);
+    expect(metadata.openGraph?.images).toEqual(metadata.twitter?.images);
+  });
+
+  it("describes the person, their projects and their languages as structured data", async () => {
+    const element = await UserPage({
+      params: Promise.resolve({ username: "octocat" }),
+      searchParams: Promise.resolve({ lang: "de" }),
+    });
+    const html = await render(element);
+    const payload = readJsonLdBlocks(html)[0] as {
+      '@type': string;
+      url: string;
+      inLanguage: string;
+      mainEntity: {
+        '@type': string;
+        name: string;
+        alternateName: string;
+        url: string;
+        sameAs: string[];
+        knowsAbout: string[];
+      };
+      hasPart: Array<{
+        '@type': string;
+        name: string;
+        url: string;
+        programmingLanguage: string;
+        author: { '@id': string };
+      }>;
+    };
+
+    expect(payload['@type']).toBe("ProfilePage");
+    // The localized page, but the entity id stays locale-free so the four
+    // languages describe one person rather than four.
+    expect(payload.url).toBe("https://git-to-portfolio.vercel.app/octocat?lang=de");
+    expect(payload.inLanguage).toBe("de-DE");
+    // No `dateCreated`: the account's `created_at` would date the portfolio to
+    // the day the GitHub account was opened, which says nothing about the page.
+    expect(payload).not.toHaveProperty("dateCreated");
+    expect(payload.mainEntity).toMatchObject({
+      '@type': "Person",
+      name: "The Octocat",
+      alternateName: "@octocat",
+      url: "https://github.com/octocat",
+      // The featured languages of the six displayed repositories.
+      knowsAbout: ["JavaScript", "TypeScript"],
+    });
+    expect(payload.mainEntity.sameAs).toEqual(["https://github.com/octocat"]);
+
+    // Only the six repositories the page displays, in the same order, each one
+    // attributed to the person the page is about.
+    expect(payload.hasPart.map(({ name }) => name)).toEqual([
+      "repo-1",
+      "repo-2",
+      "repo-3",
+      "repo-4",
+      "repo-5",
+      "repo-6",
+    ]);
+    expect(payload.hasPart[0]).toMatchObject({
+      '@type': "SoftwareSourceCode",
+      url: "https://github.com/octocat/repo-1",
+      programmingLanguage: "TypeScript",
+    });
+    expect(payload.hasPart[0]?.author['@id']).toBe(
+      "https://git-to-portfolio.vercel.app/octocat#person",
+    );
+  });
+
+  it("omits the project list from structured data when there are no repositories", async () => {
+    githubMocks.getTopRepos.mockResolvedValue([]);
+
+    const element = await UserPage({
+      params: Promise.resolve({ username: "octocat" }),
+      searchParams: Promise.resolve({ lang: "es" }),
+    });
+    const payload = readJsonLdBlocks(await render(element))[0] as {
+      hasPart?: unknown;
+      mainEntity: { knowsAbout: string[] };
+    };
+
+    // An empty project list is left out rather than emitted as an empty array,
+    // and the language list follows the repositories that are shown.
+    expect(payload.hasPart).toBeUndefined();
+    expect(payload.mainEntity.knowsAbout).toEqual([]);
   });
 });
 

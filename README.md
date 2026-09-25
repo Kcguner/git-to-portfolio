@@ -19,7 +19,8 @@ Real portfolios you can try right now:
 - Turkish, English, German and Spanish, resolved on the server
 - Print-optimized stylesheet with a one-click **Save as PDF** export
 - Native Web Share with an accessible clipboard fallback
-- Localized Open Graph and Twitter card images, generated per profile
+- Localized Open Graph and Twitter card images, one static image per language and per profile
+- Per-language titles, descriptions, keywords, hreflang clusters and JSON-LD structured data
 - Installable web app metadata
 - One-hour GitHub API revalidation
 - Vitest suite with enforced coverage thresholds, TypeScript, ESLint and CI
@@ -87,6 +88,18 @@ The core API is used for repositories rather than the Search API. Unauthenticate
 The **Share** action uses the native Web Share API where available and falls back to the Clipboard API, announcing the result in a live region. The message clears itself, lingers longer when it carries a recovery instruction, and can always be dismissed by hand.
 
 The **Print / Save as PDF** action opens the browser print dialog. The print stylesheet drops navigation and controls, converts the language bars to flat greys because browsers strip background gradients, and forces near-white text to a readable dark colour so repository names do not print as white-on-white.
+
+## Search and Sharing
+
+Every page describes itself to crawlers in the language it is rendered in, and `lib/seo.ts` is the single place that decides how:
+
+- **Canonical and hreflang.** Each page's `canonical` is its own localized URL, and every page carries the full cluster — `tr-TR`, `en-US`, `de-DE`, `es-ES` and `x-default` — as absolute `hreflang` alternates, in the `<head>` and in `sitemap.xml`.
+- **Titles, descriptions and keywords.** Localized per language, including a keyword set for each portfolio that contains the person's name, so a search for their name plus "portfolio" can find them in any of the four languages.
+- **Structured data.** JSON-LD in the reader's language: the site as `WebSite` and `WebApplication`, the home page's visible three steps as a `HowTo`, and a portfolio as a `ProfilePage` whose subject is a `Person`, with the six displayed repositories as `SoftwareSourceCode` and their languages as `knowsAbout`. Only facts the page shows are emitted, and the entity id is the locale-free URL, so all four languages describe one person rather than four.
+- **Social cards.** One image per language, at `/opengraph-image/<locale>` and `/<user>/opengraph-image/<locale>`. The language is a path segment rather than a query parameter because social crawlers fetch the image URL on its own; each language is also a separate cache entry, and the home page cards are prerendered at build time. `og:locale:alternate` tells Facebook, LinkedIn and Slack which card matches the page.
+- **Sitemap.** One entry per language per page, each repeating the full hreflang cluster, with no fabricated `lastmod`. The two 404 segments are `noindex` and carry a card in the reader's language.
+
+The language a page is rendered in comes from the URL, not from a cookie, so a crawler that ignores `Accept-Language` and requests `/` always gets the same Turkish document with the same Turkish metadata.
 
 ## Quality Checks
 

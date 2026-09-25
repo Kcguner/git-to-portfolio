@@ -1,13 +1,33 @@
 import { ImageResponse } from "next/og";
+import { getDictionary } from "@/lib/i18n";
+import { getLocaleFromImageId, SITE_NAME, SOCIAL_IMAGE_SIZE } from "@/lib/seo";
 
-export const alt = "Git-to-Portfolio — GitHub profilinden portföy oluşturma";
-export const size = {
-  width: 1200,
-  height: 630,
-};
-export const contentType = "image/png";
+/**
+ * One card per language, each with its own static URL (`/opengraph-image/<id>`).
+ *
+ * The locale is a path segment rather than a page query parameter because
+ * social crawlers request the image on its own and may drop the query string.
+ * Separate URLs also mean each language's card is generated once at build time
+ * and cached separately, instead of one shared response that would have to be
+ * rendered per request and could be cached in the wrong language.
+ */
+export function generateImageMetadata() {
+  return (["tr", "en", "de", "es"] as const).map((locale) => ({
+    id: locale,
+    alt: getDictionary(locale).metadata.ogImage.alt,
+    size: { ...SOCIAL_IMAGE_SIZE },
+    contentType: "image/png",
+  }));
+}
 
-export default function OpenGraphImage() {
+export default async function OpenGraphImage({
+  id,
+}: {
+  id: Promise<string | number>;
+}) {
+  const locale = getLocaleFromImageId(await id);
+  const { ogImage } = getDictionary(locale).metadata;
+
   return new ImageResponse(
     (
       <div
@@ -51,7 +71,7 @@ export default function OpenGraphImage() {
             >
               {"</>"}
             </div>
-            <span>Git-to-Portfolio</span>
+            <span>{SITE_NAME}</span>
           </div>
           <div
             style={{
@@ -62,7 +82,7 @@ export default function OpenGraphImage() {
               lineHeight: 1.08,
             }}
           >
-            GitHub&apos;dan portföye.
+            {ogImage.headline}
           </div>
           <div
             style={{
@@ -73,7 +93,7 @@ export default function OpenGraphImage() {
               lineHeight: 1.4,
             }}
           >
-            Kullanıcı adını yaz, sade ve yazdırılabilir geliştirici portföyünü oluştur.
+            {ogImage.subtitle}
           </div>
         </div>
 
@@ -86,11 +106,11 @@ export default function OpenGraphImage() {
             fontSize: 21,
           }}
         >
-          <span>GitHub profilinizi bir portföye dönüştürün.</span>
-          <span style={{ color: "#10b981" }}>SEO ve paylaşım hazır</span>
+          <span>{ogImage.footer}</span>
+          <span style={{ color: "#10b981" }}>{ogImage.badge}</span>
         </div>
       </div>
     ),
-    { ...size },
+    { ...SOCIAL_IMAGE_SIZE },
   );
 }

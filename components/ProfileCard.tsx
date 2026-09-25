@@ -2,6 +2,7 @@ import Image from 'next/image';
 import type { ReactNode } from 'react';
 import type { GitHubProfile } from '@/lib/github';
 import { getDictionary, LOCALE_TAGS, type Locale } from '@/lib/i18n';
+import { getSafeExternalHttpUrl } from '@/lib/site';
 import type { TopLanguage } from '@/lib/skills';
 
 type Props = {
@@ -37,26 +38,6 @@ function isAllowedAvatarUrl(value: string): boolean {
 
 function getAvatarInitial(value: string, localeTag: string): string {
   return value.trim().charAt(0).toLocaleUpperCase(localeTag);
-}
-
-function getSafeBlogUrl(value: string): string | null {
-  const trimmedValue = value.trim();
-  if (!trimmedValue) return null;
-
-  if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(trimmedValue) && !/^https?:/i.test(trimmedValue)) {
-    return null;
-  }
-
-  try {
-    const url = new URL(/^https?:/i.test(trimmedValue) ? trimmedValue : `https://${trimmedValue}`);
-    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.hostname) {
-      return url.toString();
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
 }
 
 function ExternalLinkIcon() {
@@ -95,7 +76,7 @@ export default function ProfileCard({ profile, topLanguages, locale }: Props) {
   const dictionary = getDictionary(locale);
   const localeTag = LOCALE_TAGS[locale];
   const top3 = topLanguages.slice(0, 3);
-  const blog = profile.blog ? getSafeBlogUrl(profile.blog) : null;
+  const blog = getSafeExternalHttpUrl(profile.blog);
   const displayName = profile.name?.trim() || profile.login;
   const avatarAlt = `${profile.login} ${dictionary.profile.avatarAlt}`;
   const hasRemoteAvatar = isAllowedAvatarUrl(profile.avatar_url);

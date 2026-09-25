@@ -19,7 +19,8 @@ Hemen deneyebileceğiniz gerçek portföyler:
 - Sunucu tarafında çözümlenen Türkçe, İngilizce, Almanca ve İspanyolca arayüz
 - Tek tıkla **PDF olarak kaydet** çıktısı veren, yazdırmaya optimize edilmiş stil dosyası
 - Erişilebilir pano yedeğiyle birlikte yerel Web Share desteği
-- Profil başına üretilen, lokalize Open Graph ve Twitter kart görselleri
+- Profil ve dil başına üretilen, lokalize Open Graph ve Twitter kart görselleri
+- Dil başına lokalize başlık, açıklama, anahtar kelimeler, hreflang kümesi ve JSON-LD yapılandırılmış verisi
 - Yüklenebilir web uygulaması meta verisi
 - Bir saatlik GitHub API yeniden doğrulama
 - Zorunlu coverage eşikleri olan Vitest testleri, TypeScript, ESLint ve CI
@@ -87,6 +88,18 @@ Depolar için Search API yerine core API kullanılır. Anonim arama, bazı herke
 **Paylaşım** aksiyonu, mümkün olan yerde yerel Web Share API'sini kullanır, yoksa Pano API'sine düşer ve sonucu canlı bir bölgeyle duyurur. Mesaj kendiliğinden kapanır, kurtarma talimatı içeriyorsa daha uzun kalır ve her zaman elle kapatılabilir.
 
 **Yazdır / PDF'ye kaydet** aksiyonu tarayıcının yazdırma penceresini açar. Yazdırma stil dosyası gezinme ve kontrolleri gizler, dil barlarını tarayıcıların arka plan gradyanlarını kaldırması nedeniyle düz griye çevirir ve açık koyu renkli metni okunabilir koyu renge zorlar; böylece repo adları beyaz üstüne beyaz yazdırılmaz.
+
+## Arama Motorları ve Paylaşım
+
+Her sayfa, kendisini tarayıcılara render edildiği dilde anlatır ve bunun nasıl yapılacağına tek başına `lib/seo.ts` karar verir:
+
+- **Canonical ve hreflang.** Her sayfanın `canonical` değeri kendi lokalize adresidir ve her sayfa tam kümenin tamamını — `tr-TR`, `en-US`, `de-DE`, `es-ES` ve `x-default` — `<head>` ile `sitemap.xml` içinde mutlak `hreflang` alternatifleri olarak taşır.
+- **Başlık, açıklama ve anahtar kelimeler.** Dil başına lokalize; portföy sayfalarında kişinin adı da anahtar kelime kümesinde yer alır, böylece "adı + portföy" araması onu dört dilin herhangi birinde bulabilir.
+- **Yapılandırılmış veri.** Okuyucunun dilinde JSON-LD: site `WebSite` ve `WebApplication` olarak, ana sayfanın sayfada görünen üç adımı `HowTo` olarak, portföy sayfası ise konusu `Person` olan bir `ProfilePage` olarak; gösterilen altı repo `SoftwareSourceCode`, dilleri ise `knowsAbout` olarak. Yalnızca sayfanın gösterdiği bilgiler yayımlanır ve entity id dil içermeyen adrestir; böylece dört dil bir kişiyi dört kişi olarak değil, bir kişi olarak anlatır.
+- **Sosyal kartlar.** Dil başına bir görsel: `/opengraph-image/<dil>` ve `/<kullanıcı>/opengraph-image/<dil>`. Dil sorgu parametresi değil, yol segmentidir; çünkü sosyal tarayıcılar görsel adresini tek başına ister. Böylece her dil ayrı bir önbellek kaydıdır ve ana sayfa kartları build sırasında önceden üretilir. `og:locale:alternate` ise Facebook, LinkedIn ve Slack'e sayfayla eşleşen kartı söyler.
+- **Sitemap.** Sayfa ve dil başına bir kayıt; her kayıt tam hreflang kümesini tekrarlar ve uydurma `lastmod` içermez. İki 404 segmenti `noindex`'tir ve okuyucunun dilinde bir kart taşır.
+
+Sayfanın render edildiği dil çerezden değil URL'den gelir; bu yüzden `Accept-Language` başlığını yok sayan ve `/` isteyen bir tarayıcı her zaman aynı Türkçe belgeyi ve aynı Türkçe meta veriyi alır.
 
 ## Kalite Kontrolleri
 

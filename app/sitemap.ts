@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
-import { getLocaleAlternates } from "@/lib/i18n";
+import { getProfilePathname, LOCALES, withLocale, type Locale } from "@/lib/i18n";
+import { getAbsoluteLocaleAlternates } from "@/lib/seo";
 import { getSiteUrl } from "@/lib/site";
 
 /**
@@ -22,31 +23,39 @@ const PROFILE_USERNAMES = ["kcguner", "torvalds", "gaearon", "yyx990803"] as con
  */
 function buildEntry(
   pathname: string,
-  siteUrl: string,
+  locale: Locale,
   changeFrequency: NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>,
   priority: number
 ): MetadataRoute.Sitemap[number] {
-  // getLocaleAlternates() returns relative hreflang targets for one pathname;
-  // the sitemap protocol requires absolute URLs, so resolve them against the site origin.
-  const languages = Object.fromEntries(
-    Object.entries(getLocaleAlternates(pathname)).map(([tag, url]) => [tag, `${siteUrl}${url}`])
-  );
-
   return {
-    url: `${siteUrl}${pathname}`,
+    // Every language is its own URL, not one URL plus a query parameter that
+    // crawlers have to guess is a translation. Each entry repeats the full
+    // hreflang cluster, which is what the protocol asks for: a localized URL
+    // that is only reachable through another URL's alternates is discovered
+    // late, if at all.
+    url: `${getSiteUrl()}${withLocale(pathname, locale)}`,
     changeFrequency,
     priority,
-    alternates: { languages },
+    alternates: { languages: getAbsoluteLocaleAlternates(pathname) },
   };
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const siteUrl = getSiteUrl();
+/** One sitemap entry per language for one pathname. */
+function buildLocaleEntries(
+  pathname: string,
+  changeFrequency: NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>,
+  priority: number
+): MetadataRoute.Sitemap[number][] {
+  return LOCALES.map((locale) => buildEntry(pathname, locale, changeFrequency, priority));
+}
 
+export default function sitemap(): MetadataRoute.Sitemap {
   return [
-    buildEntry("/", siteUrl, "weekly", 1),
-    ...PROFILE_USERNAMES.map((username) =>
-      buildEntry(`/${encodeURIComponent(username)}`, siteUrl, "weekly", 0.8)
+    // The home page is the strongest signal for the site, so every language
+    // keeps the top priority; the profiles share the lower one.
+    ...buildLocaleEntries("/", "weekly", 1),
+    ...PROFILE_USERNAMES.flatMap((username) =>
+      buildLocaleEntries(getProfilePathname(username), "weekly", 0.8)
     ),
   ];
 }

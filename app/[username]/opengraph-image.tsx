@@ -1,16 +1,23 @@
 import { ImageResponse } from "next/og";
 import { GitHubError, getProfile, getTopRepos } from "@/lib/github";
 import type { GitHubProfile, GitHubRepo, GitHubRequestOptions } from "@/lib/github";
+import { getDictionary, LOCALES, type Locale } from "@/lib/i18n";
+import { getLocaleFromImageId, SOCIAL_IMAGE_SIZE } from "@/lib/seo";
 import { normalizeUsername } from "@/lib/username";
 
 // Image metadata routes receive route params but not page search params in
-// Next.js 16, so this image stays language-independent for every locale.
-export const alt = "GitHub portfolio created with Git-to-Portfolio";
-export const size = {
-  width: 1200,
-  height: 630,
-};
-export const contentType = "image/png";
+// Next.js 16, so the language is carried as the generated image id
+// (`/<username>/opengraph-image/<locale>`) instead: one static URL per language,
+// which a social crawler can cache on its own, and one card rendered in the
+// language of the page that references it.
+export function generateImageMetadata() {
+  return LOCALES.map((locale) => ({
+    id: locale,
+    alt: getDictionary(locale).metadata.profileOgImage.label,
+    size: { ...SOCIAL_IMAGE_SIZE },
+    contentType: "image/png",
+  }));
+}
 
 const AUTHENTICATED_CACHE_SECONDS = 3600;
 const UNAUTHENTICATED_CACHE_SECONDS = 60;
@@ -23,6 +30,7 @@ type RouteParams = { username: string } | Promise<{ username: string }>;
 
 type ProfileImageProps = {
   params: RouteParams;
+  id: Promise<string | number>;
 };
 
 type ImageData = {
@@ -78,9 +86,11 @@ function cacheHeaders(maxAge: number, staleWhileRevalidate = 0): Record<string, 
 function renderImage(
   { username, profile, repos }: ImageData,
   maxAge: number,
+  locale: Locale,
   staleWhileRevalidate = 0
 ) {
-  const displayName = profile?.name?.trim() || profile?.login || username;
+  const { profileOgImage } = getDictionary(locale).metadata;
+  const displayName = profile?.name?.trim() || profile?.login || profileOgImage.unknownUser;
   const login = profile?.login || username;
   const avatarUrl = profile?.avatar_url?.trim();
   const featuredRepos = repos.slice(0, 3);
@@ -158,7 +168,7 @@ function renderImage(
               }}
             >
               <div style={{ display: "flex", color: "#10b981", fontSize: 22, fontWeight: 700 }}>
-                GitHub portfolio
+                {profileOgImage.label}
               </div>
               <div
                 style={{
@@ -177,9 +187,7 @@ function renderImage(
             </div>
           </div>
           <div style={{ display: "flex", color: "#a1a1aa", fontSize: 24 }}>
-            {featuredRepos.length > 0
-              ? "Featured GitHub projects"
-              : "GitHub profile share"}
+            {featuredRepos.length > 0 ? profileOgImage.featured : profileOgImage.share}
           </div>
         </div>
 
@@ -194,7 +202,7 @@ function renderImage(
             fontSize: 20,
           }}
         >
-          <span>Created with Git-to-Portfolio</span>
+          <span>{profileOgImage.footer}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {featuredRepos.length > 0 ? (
               featuredRepos.map((repo) => (
@@ -210,18 +218,26 @@ function renderImage(
       </div>
     ),
     {
-      ...size,
+      ...SOCIAL_IMAGE_SIZE,
       headers: cacheHeaders(maxAge, staleWhileRevalidate),
     },
   );
 }
 
-export default async function ProfileOpenGraphImage({ params }: ProfileImageProps) {
+export default async function ProfileOpenGraphImage({ params, id }: ProfileImageProps) {
+  const locale = getLocaleFromImageId(await id);
   const username = await getUsername(params);
   if (!username) {
+    // Nothing to look up: the card is rendered from the localized placeholder
+    // and cached hard, because the same invalid path will never resolve.
     return renderImage(
-      { username: "GitHub user", profile: null, repos: [] },
-      INVALID_USERNAME_CACHE_SECONDS
+      {
+        username: getDictionary(locale).metadata.profileOgImage.unknownUser,
+        profile: null,
+        repos: [],
+      },
+      INVALID_USERNAME_CACHE_SECONDS,
+      locale
     );
   }
 
@@ -233,9 +249,9 @@ export default async function ProfileOpenGraphImage({ params }: ProfileImageProp
     profile = await getProfile(username, requestOptions);
     repos = await getTopRepos(username, 3, requestOptions);
     return isAuthenticated()
-      ? renderImage({ username, profile, repos }, AUTHENTICATED_CACHE_SECONDS, 300)
-      : renderImage({ username, profile, repos }, UNAUTHENTICATED_CACHE_SECONDS, 30);
+      ? renderImage({ username, profile, repos }, AUTHENTICATED_CACHE_SECONDS, locale, 300)
+      : renderImage({ username, profile, repos }, UNAUTHENTICATED_CACHE_SECONDS, locale, 30);
   } catch (error) {
-    return renderImage({ username, profile, repos }, getFailureCacheSeconds(error));
+    return renderImage({ username, profile, repos }, getFailureCacheSeconds(error), locale);
   }
 }
