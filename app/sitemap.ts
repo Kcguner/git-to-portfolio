@@ -2,7 +2,15 @@ import type { MetadataRoute } from "next";
 import { getLocaleAlternates } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
 
-const PROFILE_USERNAMES = ["torvalds", "gaearon", "yyx990803"] as const;
+/**
+ * Profile pages submitted for indexing. This is deliberately its own list
+ * rather than a projection of `EXAMPLES`: the example grid is a UI decision
+ * about what to showcase, the sitemap is about what we want crawled, and
+ * coupling them would mean a layout change silently dropping a page from
+ * search. The owner's profile leads it; the others stay for long-tail
+ * discovery even though they are no longer showcased on the home page.
+ */
+const PROFILE_USERNAMES = ["kcguner", "torvalds", "gaearon", "yyx990803"] as const;
 
 /**
  * `lastmod` is intentionally omitted. Every page in this sitemap is rendered from

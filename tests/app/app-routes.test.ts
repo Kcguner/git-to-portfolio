@@ -139,6 +139,7 @@ describe("metadata routes", () => {
 
     expect(entries.map(({ url }) => url)).toEqual([
       "https://metadata.example.test/portfolio/",
+      "https://metadata.example.test/portfolio/kcguner",
       "https://metadata.example.test/portfolio/torvalds",
       "https://metadata.example.test/portfolio/gaearon",
       "https://metadata.example.test/portfolio/yyx990803",
@@ -152,9 +153,21 @@ describe("metadata routes", () => {
     expect(entries.every((entry) => !("lastModified" in entry))).toBe(true);
   });
 
+  it("submits the owner's profile for indexing, and keeps the other profiles", () => {
+    const urls = sitemap().map(({ url }) => url);
+
+    // The site owner has to be discoverable in search, not only linked from the
+    // home page. The remaining profiles are no longer showcased, but they are
+    // still real indexable pages and dropping them would lose long-tail
+    // discovery, so the list is not a projection of EXAMPLES.
+    expect(urls).toContain("https://metadata.example.test/portfolio/kcguner");
+    expect(urls).toContain("https://metadata.example.test/portfolio/gaearon");
+    expect(urls).toContain("https://metadata.example.test/portfolio/yyx990803");
+  });
+
   it("exposes absolute hreflang alternates for every supported locale plus x-default", () => {
     const siteUrl = "https://metadata.example.test/portfolio";
-    const pathnames = ["/", "/torvalds", "/gaearon", "/yyx990803"] as const;
+    const pathnames = ["/", "/kcguner", "/torvalds", "/gaearon", "/yyx990803"] as const;
     const entries = sitemap();
 
     expect(entries).toHaveLength(pathnames.length);

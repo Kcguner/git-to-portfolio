@@ -44,6 +44,7 @@ All notable changes to Git-to-Portfolio are documented in this file. The format 
 
 ### Added
 
+- The owner's profile is submitted in the sitemap, so it is discoverable in search rather than only linked from the home page. The sitemap keeps its own list instead of projecting `EXAMPLES`: the example grid is a UI decision about what to showcase, the sitemap is about what we want crawled, and the profiles that are no longer showcased stay in the sitemap for long-tail discovery.
 - The site owner leads the home page example grid and the example links under the search box, described in all four languages. The example grid is capped and centred at two cards so it does not sprawl.
 - Accessible profile sharing through the native Web Share API, with localized Clipboard API fallback and visible error feedback.
 - Generated `app/manifest.ts` and web app identity metadata.
