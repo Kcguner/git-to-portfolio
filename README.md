@@ -55,18 +55,20 @@ The root layout renders the correct `<html lang>` on the server, so the language
 ## Environment Variables
 
 ```env
-# Public canonical origin used by sharing, metadata, robots.txt and sitemap.xml
+# Canonical origin used by sharing, metadata, robots.txt and sitemap.xml.
 # Use an absolute HTTPS URL without a trailing slash.
-NEXT_PUBLIC_SITE_URL=https://git-to-portfolio.vercel.app
+SITE_URL=https://git-to-portfolio.vercel.app
 
 # Public source repository URL; defaults to Kcguner/git-to-portfolio
-NEXT_PUBLIC_GITHUB_REPO_URL=https://github.com/Kcguner/git-to-portfolio
+GITHUB_REPO_URL=https://github.com/Kcguner/git-to-portfolio
 
 # Recommended for public deployments to avoid the anonymous GitHub quota
 GITHUB_TOKEN=github_pat_...
 ```
 
-`GITHUB_TOKEN` is read only on the server. Use a fine-grained token with no private-repository access and rotate it immediately if it is exposed.
+All three are server-only, so none of them carry a `NEXT_PUBLIC_` prefix and none reach the browser. The two original names (`NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_GITHUB_REPO_URL`) are still read so an existing deployment keeps working after upgrading, but new deployments should use the shorter names.
+
+`GITHUB_TOKEN` needs no permissions at all: a fine-grained token can read every public repository on GitHub, which is all this app does. Use a fine-grained token with no private-repository access and rotate it immediately if it is exposed.
 
 ## How It Works
 

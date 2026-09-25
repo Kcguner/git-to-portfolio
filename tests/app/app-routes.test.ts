@@ -17,7 +17,7 @@ import sitemap from "../../app/sitemap";
 import { LOCALES, LOCALE_TAGS, withLocale } from "../../lib/i18n";
 import { getSiteUrl } from "../../lib/site";
 
-const originalSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+const originalSiteUrl = process.env.SITE_URL;
 
 function restoreEnv(name: string, value: string | undefined) {
   if (value === undefined) delete process.env[name];
@@ -26,11 +26,11 @@ function restoreEnv(name: string, value: string | undefined) {
 
 describe("home page", () => {
   afterEach(() => {
-    restoreEnv("NEXT_PUBLIC_SITE_URL", originalSiteUrl);
+    restoreEnv("SITE_URL", originalSiteUrl);
   });
 
   it("renders the selected locale, examples, and all workflow steps", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://portfolio.example.test/";
+    process.env.SITE_URL = "https://portfolio.example.test/";
     const element = await HomePage({ searchParams: Promise.resolve({ lang: "en" }) });
     const html = await import("react-dom/server").then(({ renderToStaticMarkup }) =>
       renderToStaticMarkup(element)
@@ -94,7 +94,7 @@ describe("home page", () => {
   });
 
   it("resolves home metadata URLs against a configured site origin", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://portfolio.example.test/";
+    process.env.SITE_URL = "https://portfolio.example.test/";
 
     const metadata = await HomeMetadata({ searchParams: Promise.resolve({ lang: "es" }) });
 
@@ -107,11 +107,11 @@ describe("home page", () => {
 
 describe("metadata routes", () => {
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://metadata.example.test/portfolio///";
+    process.env.SITE_URL = "https://metadata.example.test/portfolio///";
   });
 
   afterEach(() => {
-    restoreEnv("NEXT_PUBLIC_SITE_URL", originalSiteUrl);
+    restoreEnv("SITE_URL", originalSiteUrl);
     vi.useRealTimers();
   });
 
@@ -165,7 +165,7 @@ describe("metadata routes", () => {
 
       for (const [tag, url] of Object.entries(languages ?? {}) as Array<[string, string]>) {
         // Absolute and parseable, with the repeated slashes of
-        // NEXT_PUBLIC_SITE_URL already normalised away.
+        // SITE_URL already normalised away.
         expect(`${tag}: ${url}`).toMatch(
           /^[\w-]+: https:\/\/metadata\.example\.test\/portfolio\/\S*$/
         );
