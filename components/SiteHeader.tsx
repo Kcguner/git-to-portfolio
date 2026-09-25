@@ -33,11 +33,19 @@ export function Brand({ locale }: { locale: Locale }) {
   const dictionary = getDictionary(locale);
 
   return (
-    <Link href={withLocale("/", locale)} className="group flex items-center gap-3" aria-label={dictionary.header.homeLabel}>
+    <Link
+      href={withLocale("/", locale)}
+      className="group flex shrink-0 items-center gap-3"
+      aria-label={dictionary.header.homeLabel}
+    >
       <span className="logo-mark flex h-8 w-8 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-105">
         <GitHubIcon className="h-4 w-4 text-white" />
       </span>
-      <span className="font-semibold tracking-tight text-text-primary">Git-to-Portfolio</span>
+      {/* The product name must never wrap: at 640-900px the action row needs
+          the room. The logo mark alone still identifies the site. */}
+      <span className="hidden whitespace-nowrap font-semibold tracking-tight text-text-primary sm:inline">
+        Git-to-Portfolio
+      </span>
     </Link>
   );
 }
@@ -50,7 +58,9 @@ export default function SiteHeader({ locale, actions }: SiteHeaderProps) {
     <nav className="no-print sticky top-0 z-50 border-b border-border/50 bg-background/75 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 sm:gap-4 sm:px-6">
         <Brand locale={locale} />
-        <div className="flex shrink-0 items-center gap-2">
+        {/* min-w-0 so the action row can yield space to the brand instead of
+            pushing the header wider than the viewport. */}
+        <div className="flex min-w-0 items-center gap-2">
           <LocaleSwitcher locale={locale} />
           {actions}
           {githubRepoUrl && (
