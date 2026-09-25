@@ -22,7 +22,7 @@ Try it live:
 - Language-independent dynamic Open Graph and Twitter share images
 - Installable web app metadata generated from a Next.js manifest
 - Locale-aware pages with one-hour GitHub API data revalidation
-- Search API and profile input normalization
+- GitHub REST API and profile input normalization
 - Vitest, TypeScript, ESLint and GitHub Actions CI
 
 ## Requirements
@@ -71,17 +71,16 @@ GITHUB_TOKEN=github_pat_...
 ## How It Works
 
 1. `GET /users/:username` loads the public profile.
-2. GitHub Search API loads the repositories for that user with:
-   - `user:<username>`
-   - `fork:false`
-   - `archived:false`
-   - sorted by stars
-3. The first six repositories are displayed. Only as many repositories as are displayed are requested, so the search response stays as small as the page needs.
-4. Language percentages represent repository counts within those featured repositories; they are not source-code byte or line percentages.
-5. GitHub API requests are cached with one-hour revalidation; language selection is carried in the URL query.
-6. Profile actions use the canonical, locale-aware portfolio URL without tracking or debug parameters.
+2. `GET /users/:username/repos` loads the user's repositories, filtered to non-fork and non-archived, ranked locally by stars. The first six are displayed.
+3. Language percentages represent repository counts within those featured repositories; they are not source-code byte or line percentages.
+4. GitHub API requests are cached with one-hour revalidation; language selection is carried in the URL query.
+5. Profile actions use the canonical, locale-aware portfolio URL without tracking or debug parameters.
 
-A failing repository lookup does not take the profile down. The Search API is rate limited far more aggressively than the profile endpoint, so the page still renders the profile card, the language block and an empty repository state, and logs the failure once with the short GitHub error code. Only a missing user is turned into a 404; every other upstream failure reaches the error boundary rather than being disguised as a missing profile.
+The core API is used for repositories rather than the Search API, for two reasons. It is rate limited far more generously (60 requests per hour anonymously, the same bucket as the profile call, against 10 per minute for search), and unauthenticated search refuses some public accounts outright with `422 Validation Failed`, which would render a perfectly valid profile with no repositories at all.
+
+The trade-off is ranking scope: the core API cannot sort by stars, so the six cards are the most-starred of the user's 100 most recently pushed repositories. That window covers the large majority of accounts exactly. Raise `DEFAULT_REPO_PAGES` in `lib/github.ts` to widen it at the cost of one more request per page.
+
+A failing repository lookup does not take the profile down. The page still renders the profile card, the language block and a repository state that says the projects could not be loaded, rather than falsely claiming the user has no public repositories. Only a missing user is turned into a 404; every other upstream failure reaches the error boundary rather than being disguised as a missing profile.
 
 ## Username Input
 
@@ -160,7 +159,7 @@ GitHub Actions runs typecheck, lint, tests, the production dependency audit and 
 - Next.js 16 App Router
 - React 19
 - Tailwind CSS 3
-- GitHub REST and Search APIs
+- GitHub REST API
 - Vitest
 - GitHub Actions
 

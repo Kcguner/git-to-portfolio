@@ -62,8 +62,11 @@ vi.mock("../../components/ProfileCard", () => ({
 }));
 
 vi.mock("../../components/RepoGrid", () => ({
-  default: ({ repos }: { repos: GitHubRepo[] }) => (
-    <div data-repositories={repos.map(({ name }) => name).join(",")} />
+  default: ({ repos, unavailable }: { repos: GitHubRepo[]; unavailable?: boolean }) => (
+    <div
+      data-repositories={repos.map(({ name }) => name).join(",")}
+      data-unavailable={String(Boolean(unavailable))}
+    />
   ),
 }));
 
@@ -178,6 +181,7 @@ describe("profile page", () => {
     expect(html).toContain('data-profile="octocat"');
     expect(html).toContain('data-languages="JavaScript:83,TypeScript:17"');
     expect(html).toContain('data-repositories="repo-1,repo-2,repo-3,repo-4,repo-5,repo-6"');
+    expect(html).toContain('data-unavailable="false"');
     expect(html).not.toContain("repo-7");
     expect(githubMocks.getTopRepos).toHaveBeenCalledWith("octocat", 6);
   });
@@ -223,11 +227,14 @@ describe("profile page", () => {
   });
 
   it("keeps the profile when the repository search hits a rate limit", async () => {
+    const consoleWarn = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     githubMocks.getTopRepos.mockRejectedValue(
-      new GitHubSecondaryRateLimitError({ retryAfterMs: 1_000 })
+      new GitHubSecondaryRateLimitError({ status: 429, retryAfterMs: 1_000 })
     );
 
     const element = await UserPage({
@@ -241,20 +248,26 @@ describe("profile page", () => {
     expect(html).toContain('data-profile="octocat"');
     expect(html).toContain('data-languages=""');
     expect(html).toContain('data-repositories=""');
+    // The empty state must be marked unavailable, otherwise the page claims
+    // the user has no public repositories when GitHub was simply unreachable.
+    expect(html).toContain('data-unavailable="true"');
     expect(navigationMocks.notFound).not.toHaveBeenCalled();
 
     // The failure stays observable exactly once, with the short code only.
     expect(githubMocks.getTopRepos).toHaveBeenCalledWith("octocat", 6);
-    expect(consoleError).toHaveBeenCalledOnce();
-    const [message] = consoleError.mock.calls[0] as [string];
+    expect(consoleWarn).toHaveBeenCalledOnce();
+    const [message] = consoleWarn.mock.calls[0] as [string];
     expect(message).toContain("secondary-rate-limit");
+    expect(message).toContain("status 429");
     expect(message).not.toContain("Bearer");
     expect(message).not.toContain("X-GitHub-Api-Version");
+    // A handled degradation must not trip the Next.js dev error overlay.
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it("reports unknown repository failures without leaking details", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const consoleWarn = vi
+      .spyOn(console, "warn")
       .mockImplementation(() => undefined);
     githubMocks.getTopRepos.mockRejectedValue(new Error("socket hang up"));
 
@@ -267,8 +280,8 @@ describe("profile page", () => {
     expect(html).toContain('data-profile="octocat"');
     expect(html).toContain('data-repositories=""');
     expect(navigationMocks.notFound).not.toHaveBeenCalled();
-    expect(consoleError).toHaveBeenCalledOnce();
-    const [message] = consoleError.mock.calls[0] as [string];
+    expect(consoleWarn).toHaveBeenCalledOnce();
+    const [message] = consoleWarn.mock.calls[0] as [string];
     expect(message).toContain("unknown");
     expect(message).not.toContain("socket hang up");
   });

@@ -265,6 +265,32 @@ describe("server-compatible presentation components", () => {
     ).toBeInTheDocument();
   });
 
+  it("distinguishes a failed lookup from a user with no repositories", () => {
+    // Claiming "no public repositories were found" after a network failure is
+    // factually wrong, and the user sees the difference.
+    const { unmount } = render(<RepoGrid repos={[]} locale="en" unavailable />);
+
+    expect(
+      screen.getByText("Projects could not be loaded right now.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No public repositories were found for this user.")
+    ).not.toBeInTheDocument();
+    unmount();
+
+    render(<RepoGrid repos={[]} locale="tr" unavailable />);
+    expect(screen.getByText("Projeler şu anda yüklenemedi.")).toBeInTheDocument();
+  });
+
+  it("still renders repositories when a lookup failed after returning some", () => {
+    render(<RepoGrid repos={[repo]} locale="en" unavailable />);
+
+    expect(screen.getByRole("link", { name: /hello-world/ })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Projects could not be loaded right now.")
+    ).not.toBeInTheDocument();
+  });
+
   it("renders repository metadata with a stable date and missing-description fallback", () => {
     render(<RepoGrid repos={[repo]} locale="en" />);
 

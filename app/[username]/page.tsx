@@ -50,12 +50,17 @@ async function resolveUsername(
 }
 
 /**
- * Returns the short, non-sensitive failure code used for observability.
- * The error message/status may embed request details, so only `code` is
- * ever surfaced.
+ * Returns a short, non-sensitive description of a GitHub failure for logs.
+ * The error message may embed request details, so only the failure code and
+ * the HTTP status are ever surfaced; neither contains the token or headers.
  */
-function getGitHubErrorCode(error: unknown): string {
-  return error instanceof GitHubError ? error.code : 'unknown';
+function describeGitHubFailure(error: unknown): string {
+  if (error instanceof GitHubError) {
+    return error.status === undefined
+      ? error.code
+      : `${error.code} (status ${error.status})`;
+  }
+  return 'unknown';
 }
 
 function getCanonicalUrl(pathname: string, locale: ReturnType<typeof getLocale>): string {
@@ -179,11 +184,16 @@ export default async function UserPage({ params, searchParams }: PageProps) {
   // page only burns transfer size and search-API quota. The slice below keeps
   // the page's own contract independent of the data layer's count handling.
   let repos: GitHubRepo[] = [];
+  let reposUnavailable = false;
   try {
     repos = await getTopRepos(canonicalUsername, FEATURED_REPO_COUNT);
   } catch (error) {
-    console.error(
-      `[profile] repository lookup failed (${getGitHubErrorCode(error)}); rendering the profile without repositories`
+    reposUnavailable = true;
+    // Warn, not error: the page renders successfully with an empty repository
+    // state. `console.error` would trip the Next.js dev error overlay and make
+    // a working page look broken.
+    console.warn(
+      `[profile] repository lookup failed (${describeGitHubFailure(error)}); rendering the profile without repositories`
     );
   }
 
@@ -240,7 +250,7 @@ export default async function UserPage({ params, searchParams }: PageProps) {
         <ProfileCard profile={profile} topLanguages={topLanguages} locale={locale} />
 
         <div className="mt-10 sm:mt-12">
-          <RepoGrid repos={topRepos} locale={locale} />
+          <RepoGrid repos={topRepos} locale={locale} unavailable={reposUnavailable} />
         </div>
 
         <footer className="mt-12 border-t border-border/50 pt-6 text-center text-xs text-text-muted">

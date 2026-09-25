@@ -109,6 +109,8 @@ const turkish = {
     footer: 'Git-to-Portfolio ile oluşturuldu · Veriler GitHub API’den alınır',
   },
   repositories: {
+    unavailableTitle: 'Projeler şu anda yüklenemedi.',
+    unavailableDescription: 'GitHub verileri alınırken geçici bir sorun oluştu. Birkaç dakika sonra tekrar dene.',
     emptyTitle: 'Gösterilecek repo yok.',
     emptyDescription: 'Bu kullanıcının herkese açık reposu bulunamadı.',
     projectsLabel: 'Projeler',
@@ -230,6 +232,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       footer: 'Created with Git-to-Portfolio · Data from the GitHub API',
     },
     repositories: {
+      unavailableTitle: 'Projects could not be loaded right now.',
+      unavailableDescription: 'There was a temporary problem reaching GitHub. Please try again in a few minutes.',
       emptyTitle: 'No repositories to show.',
       emptyDescription: 'No public repositories were found for this user.',
       projectsLabel: 'Projects',
@@ -346,6 +350,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       footer: 'Erstellt mit Git-to-Portfolio · Daten von der GitHub API',
     },
     repositories: {
+      unavailableTitle: 'Projekte konnten gerade nicht geladen werden.',
+      unavailableDescription: 'Beim Abrufen von GitHub-Daten ist ein vorübergehendes Problem aufgetreten. Bitte in wenigen Minuten erneut versuchen.',
       emptyTitle: 'Keine Repositories vorhanden.',
       emptyDescription: 'Für dieses Benutzerkonto wurden keine öffentlichen Repositories gefunden.',
       projectsLabel: 'Projekte',
@@ -462,6 +468,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       footer: 'Creado con Git-to-Portfolio · Datos de la API de GitHub',
     },
     repositories: {
+      unavailableTitle: 'No se pudieron cargar los proyectos.',
+      unavailableDescription: 'Hubo un problema temporal al conectar con GitHub. Inténtalo de nuevo en unos minutos.',
       emptyTitle: 'No hay repositorios para mostrar.',
       emptyDescription: 'No se encontraron repositorios públicos para este usuario.',
       projectsLabel: 'Proyectos',
