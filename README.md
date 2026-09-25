@@ -50,6 +50,8 @@ Turkish (`tr`) is the default. Use the language selector in the header or add a 
 
 Profile navigation and links keep the selected language. Missing, repeated or unsupported `lang` values safely fall back to Turkish.
 
+The root layout renders the correct `<html lang>` on the server, so the language is right before hydration and not only after it. `proxy.js` resolves the locale once per request — an explicit `?lang=` wins, otherwise the `Accept-Language` header is negotiated against the supported locales, otherwise Turkish is used — and forwards the result to the layout through an internal request header. Because a root layout cannot read `searchParams`, `DocumentLocale` also corrects the attribute after client-side navigation, which renders RSC payloads without re-rendering the layout.
+
 ## Environment Variables
 
 ```env
@@ -69,15 +71,17 @@ GITHUB_TOKEN=github_pat_...
 ## How It Works
 
 1. `GET /users/:username` loads the public profile.
-2. GitHub Search API loads the first 100 repositories with:
+2. GitHub Search API loads the repositories for that user with:
    - `user:<username>`
    - `fork:false`
    - `archived:false`
    - sorted by stars
-3. The first six repositories are displayed.
+3. The first six repositories are displayed. Only as many repositories as are displayed are requested, so the search response stays as small as the page needs.
 4. Language percentages represent repository counts within those featured repositories; they are not source-code byte or line percentages.
 5. GitHub API requests are cached with one-hour revalidation; language selection is carried in the URL query.
 6. Profile actions use the canonical, locale-aware portfolio URL without tracking or debug parameters.
+
+A failing repository lookup does not take the profile down. The Search API is rate limited far more aggressively than the profile endpoint, so the page still renders the profile card, the language block and an empty repository state, and logs the failure once with the short GitHub error code. Only a missing user is turned into a 404; every other upstream failure reaches the error boundary rather than being disguised as a missing profile.
 
 ## Username Input
 
@@ -96,6 +100,7 @@ Every profile includes a localized **Share** action:
 - Uses the browser's native Web Share API when it is available.
 - Falls back to the Clipboard API and copies the canonical localized profile URL.
 - Announces success and clipboard failures with accessible live feedback.
+- Success messages clear automatically after a few seconds, error messages linger longer because they carry a recovery instruction, and a close control always dismisses the toast by hand.
 - Hides the action and its feedback from print output.
 
 Profile Open Graph images intentionally use one language-independent design at a stable `/:username/opengraph-image` URL. This keeps social metadata valid even though image metadata routes do not receive the page's locale query parameters.
@@ -107,6 +112,8 @@ Every portfolio page has a **Print / Save as PDF** button:
 - Opens the browser print dialog with `window.print()`.
 - Hides navigation and action controls in print media.
 - Uses light print colors and avoids breaking cards across pages.
+- Renders the featured-language bars as flat greys with borders, because browsers strip background gradients by default when printing. The numeric percentage stays visible next to each bar, so the breakdown is still readable without colour.
+- Keeps accent-coloured text and the primary button legible on white instead of printing them as white-on-white.
 - In the browser print dialog, choose **Save as PDF** to export the portfolio.
 
 ## Web App Manifest
@@ -138,7 +145,7 @@ GitHub Actions runs typecheck, lint, tests, the production dependency audit and 
 
 ## License
 
-TODO: The repository owner must choose a license after reviewing the legal and distribution requirements. No `LICENSE` file or license identifier has been added, and contributors should not infer a license from this README.
+[MIT](LICENSE) © 2026 Kcguner. See [`LICENSE`](LICENSE) for the full terms.
 
 ## Deploy
 
@@ -160,3 +167,10 @@ TODO: The repository owner must choose a license after reviewing the legal and d
 ## Topics
 
 `nextjs`, `portfolio-generator`, `github-api`, `open-graph`, `print-to-pdf`
+
+## Known Limitations
+
+- The portfolio pages have no loading skeleton. A `loading.tsx` would enable streamed rendering, which commits the HTTP status before the page resolves: an unknown username would then answer `200` with only a skeleton instead of a real `404`. Correct status codes on the primary route win over a loading animation.
+- There is no `Accept: application/json` API route and no server-side caching layer of its own, so the GitHub quota is the only cache. Set `GITHUB_TOKEN` for public deployments.
+- The not-found UI is a client component, so the 404 response body is hydrated on the client. The HTTP status and the `<title>` are correct in the initial HTML; the visible markup arrives after hydration.
+- The `<html lang>` attribute is only re-resolved for hard navigations. The client corrects it after in-app navigation, but the server-rendered value of a client-side route change is never re-emitted.

@@ -14,9 +14,10 @@ export default function DocumentLocale() {
   const searchParams = useSearchParams();
   const locale = getLocaleFromQueryValues(searchParams.getAll('lang'));
 
-  // Root layouts cannot read page searchParams. Updating the attribute in a
-  // layout effect keeps the server-rendered default (tr) while making the
-  // client locale correct before the browser paints.
+  // Proxy already resolved <html lang> on the server for the initial
+  // document. This effect is still required for client-side router.push
+  // navigations: those render RSC payloads and never re-render the root
+  // layout, so the attribute has to be corrected after the route changes.
   useLayoutEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
@@ -71,14 +72,11 @@ function LinkToHome({ locale, label }: { locale: Locale; label: string }) {
 export function LocalizedNotFound({ kind }: { kind: NotFoundKind }) {
   const searchParams = useSearchParams();
   const locale = getLocaleFromQueryValues(searchParams.getAll('lang'));
-  const dictionary = getDictionary(locale);
 
-  useLayoutEffect(() => {
-    const pageTitle = kind === 'user'
-      ? dictionary.metadata.userNotFoundTitle
-      : dictionary.notFound.pageTitle;
-    document.title = `${pageTitle} | Git-to-Portfolio`;
-  }, [dictionary, kind]);
-
+  // The localized <title> is emitted from the server (the not-found segments
+  // read the `x-site-locale` request header in generateMetadata), so there is
+  // no document.title effect here. Only `html lang` still needs the client
+  // correction, because router.push navigations render RSC payloads and do
+  // not re-render the root layout.
   return <NotFoundView locale={locale} kind={kind} />;
 }

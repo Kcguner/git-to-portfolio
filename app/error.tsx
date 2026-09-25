@@ -1,8 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getDictionary, getLocaleFromQueryValues, withLocale } from '@/lib/i18n';
+import {
+  DEFAULT_LOCALE,
+  getDictionary,
+  getLocaleFromQueryValues,
+  withLocale,
+  type Locale,
+} from '@/lib/i18n';
 
 type Props = {
   error: Error & { digest?: string };
@@ -13,8 +20,26 @@ export default function Error({ error, retry }: Props) {
   // Production'da server hata mesajları sanitize edilebilir. Kullanıcıya
   // güvenli, sabit bir mesaj göster; ayrıntıyı server loglarında tut.
   void error;
+
+  // useSearchParams needs a Suspense boundary so the route can be statically
+  // rendered in the future. The fallback is deliberately locale-independent
+  // (the default dictionary) because no search params are readable from a
+  // boundary that is still suspended.
+  return (
+    <Suspense fallback={<ErrorView locale={DEFAULT_LOCALE} retry={retry} />}>
+      <LocalizedErrorView retry={retry} />
+    </Suspense>
+  );
+}
+
+function LocalizedErrorView({ retry }: { retry: () => void }) {
   const searchParams = useSearchParams();
   const locale = getLocaleFromQueryValues(searchParams.getAll('lang'));
+
+  return <ErrorView locale={locale} retry={retry} />;
+}
+
+function ErrorView({ locale, retry }: { locale: Locale; retry: () => void }) {
   const dictionary = getDictionary(locale).error;
 
   return (

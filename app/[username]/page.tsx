@@ -4,6 +4,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import {
   getProfile,
   getTopRepos,
+  GitHubError,
   GitHubUserNotFoundError,
 } from '@/lib/github';
 import type { GitHubProfile, GitHubRepo } from '@/lib/github';
@@ -27,6 +28,9 @@ import SiteHeader from '@/components/SiteHeader';
 
 export const revalidate = 3600;
 
+/** Number of repositories shown on the portfolio, and used for language stats. */
+const FEATURED_REPO_COUNT = 6;
+
 type PageProps = {
   params: Promise<{ username: string }>;
   searchParams: Promise<SearchParams>;
@@ -43,6 +47,15 @@ async function resolveUsername(
   const { username: requested } = await params;
   const normalized = normalizeUsername(requested);
   return normalized ? { requested, normalized } : null;
+}
+
+/**
+ * Returns the short, non-sensitive failure code used for observability.
+ * The error message/status may embed request details, so only `code` is
+ * ever surfaced.
+ */
+function getGitHubErrorCode(error: unknown): string {
+  return error instanceof GitHubError ? error.code : 'unknown';
 }
 
 function getCanonicalUrl(pathname: string, locale: ReturnType<typeof getLocale>): string {
@@ -145,21 +158,36 @@ export default async function UserPage({ params, searchParams }: PageProps) {
   }
 
   let profile: GitHubProfile;
-  let repos: GitHubRepo[];
-
   try {
     profile = await getProfile(username);
-    const canonicalUsername = normalizeUsername(profile.login) ?? username;
-    if (canonicalUsername !== username) {
-      permanentRedirect(withLocale(`/${encodeURIComponent(canonicalUsername)}`, locale, query));
-    }
-    repos = await getTopRepos(canonicalUsername, 100);
   } catch (error) {
     if (error instanceof GitHubUserNotFoundError) notFound();
     throw error;
   }
 
-  const topRepos = repos.slice(0, 6);
+  const canonicalUsername = normalizeUsername(profile.login) ?? username;
+  if (canonicalUsername !== username) {
+    permanentRedirect(withLocale(`/${encodeURIComponent(canonicalUsername)}`, locale, query));
+  }
+
+  // The repository search endpoint is rate limited far more aggressively than
+  // the profile endpoint (10 requests/minute unauthenticated), so a secondary
+  // rate limit here must not take the whole page down with it. The profile
+  // card, the languages block and the repository empty state still render.
+  // Ask for exactly as many repositories as are displayed: the featured
+  // language percentages are derived from the same six, so fetching a larger
+  // page only burns transfer size and search-API quota. The slice below keeps
+  // the page's own contract independent of the data layer's count handling.
+  let repos: GitHubRepo[] = [];
+  try {
+    repos = await getTopRepos(canonicalUsername, FEATURED_REPO_COUNT);
+  } catch (error) {
+    console.error(
+      `[profile] repository lookup failed (${getGitHubErrorCode(error)}); rendering the profile without repositories`
+    );
+  }
+
+  const topRepos = repos.slice(0, FEATURED_REPO_COUNT);
   const topLanguages = calculateTopLanguages(topRepos);
   const displayName = profile.name?.trim() || profile.login;
   const shareTitle = dictionary.metadata.portfolioTitle(displayName);
@@ -190,12 +218,20 @@ export default async function UserPage({ params, searchParams }: PageProps) {
       </SiteHeader>
 
       <main className="relative mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-        <div className="mb-6 flex items-center justify-between gap-3 sm:mb-8">
-          <div className="hidden sm:block">
-            <span className="section-label">{dictionary.profile.profileOf} {profile.login}</span>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-text-primary">{dictionary.profile.portfolioTitle}</h1>
+        <div className="mb-6 sm:mb-8">
+          <div className="flex items-center justify-between gap-3">
+            <span className="section-label">
+              {dictionary.profile.profileOf}
+              {/* On mobile the login lives in the compact tag below instead. */}
+              <span className="hidden sm:inline"> {profile.login}</span>
+            </span>
+            <span className="tag shrink-0 rounded-full px-3 py-1.5 sm:hidden">@{profile.login}</span>
           </div>
-          <span className="tag rounded-full px-3 py-1.5 sm:hidden">@{profile.login}</span>
+          {/*
+            The page's single <h1> is the display name rendered by ProfileCard.
+            This is a plain paragraph so the document keeps exactly one h1.
+          */}
+          <p className="mt-2 text-2xl font-bold tracking-tight text-text-primary">{dictionary.profile.portfolioTitle}</p>
         </div>
 
         <ProfileCard profile={profile} topLanguages={topLanguages} locale={locale} />

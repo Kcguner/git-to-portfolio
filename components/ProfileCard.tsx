@@ -10,6 +10,35 @@ type Props = {
   locale: Locale;
 };
 
+/**
+ * Hostnames GitHub may return in `avatar_url`: uploaded avatars, identicon /
+ * error fallbacks and camo-proxied assets.
+ *
+ * `next/image` THROWS (and therefore 500s the whole page) when it is handed a
+ * remote `src` whose host is not allowlisted by `images.remotePatterns`, so the
+ * URL is validated here first and unknown hosts get a CSS-only fallback.
+ *
+ * Keep in sync with `images.remotePatterns` in `next.config.js`.
+ */
+const AVATAR_HOSTNAMES = new Set([
+  'avatars.githubusercontent.com',
+  'github.com',
+  'camo.githubusercontent.com',
+]);
+
+function isAllowedAvatarUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && AVATAR_HOSTNAMES.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function getAvatarInitial(value: string, localeTag: string): string {
+  return value.trim().charAt(0).toLocaleUpperCase(localeTag);
+}
+
 function getSafeBlogUrl(value: string): string | null {
   const trimmedValue = value.trim();
   if (!trimmedValue) return null;
@@ -68,28 +97,38 @@ export default function ProfileCard({ profile, topLanguages, locale }: Props) {
   const top3 = topLanguages.slice(0, 3);
   const blog = profile.blog ? getSafeBlogUrl(profile.blog) : null;
   const displayName = profile.name?.trim() || profile.login;
+  const avatarAlt = `${profile.login} ${dictionary.profile.avatarAlt}`;
+  const hasRemoteAvatar = isAllowedAvatarUrl(profile.avatar_url);
 
   return (
     <section className="card-premium relative z-10 rounded-2xl p-6 sm:p-8 md:p-10">
       <div className="flex flex-col gap-7 sm:flex-row sm:items-start">
         <div className="relative shrink-0 self-center sm:self-start">
-          <Image
-            src={profile.avatar_url}
-            alt={`${profile.login} ${dictionary.profile.avatarAlt}`}
-            width={160}
-            height={160}
-            preload
-            sizes="(max-width: 640px) 128px, 160px"
-            className="profile-avatar h-32 w-32 rounded-full object-cover sm:h-40 sm:w-40"
-          />
-          <span
-            className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full border-4 border-surface bg-accent text-surface"
-            title={dictionary.profile.avatarTitle}
-            aria-hidden="true"
-          >
+          {hasRemoteAvatar ? (
+            <Image
+              src={profile.avatar_url}
+              alt={avatarAlt}
+              width={160}
+              height={160}
+              preload
+              sizes="(max-width: 640px) 128px, 160px"
+              className="profile-avatar h-32 w-32 rounded-full object-cover sm:h-40 sm:w-40"
+            />
+          ) : (
+            // Pure-CSS fallback: nothing to fetch, so it cannot fail.
+            <div
+              role="img"
+              aria-label={avatarAlt}
+              className="profile-avatar flex h-32 w-32 items-center justify-center rounded-full bg-accent/20 text-4xl font-semibold uppercase leading-none text-text-primary sm:h-40 sm:w-40 sm:text-5xl"
+            >
+              {getAvatarInitial(displayName, localeTag)}
+            </div>
+          )}
+          <span className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full border-4 border-surface bg-accent text-surface">
             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m5 12 4 4L19 6" />
             </svg>
+            <span className="sr-only">{dictionary.profile.avatarTitle}</span>
           </span>
         </div>
 

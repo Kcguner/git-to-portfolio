@@ -108,11 +108,14 @@ describe("client components", () => {
     });
   });
 
-  it("localizes a not-found page and updates its document title", () => {
+  it("localizes a not-found page without mutating the document title", () => {
+    document.title = "Git-to-Portfolio";
     render(<LocalizedNotFound kind="user" />);
 
     expect(screen.getByRole("heading", { name: "User not found" })).toBeInTheDocument();
-    expect(document.title).toBe("User not found | Git-to-Portfolio");
+    // The localized <title> is emitted by the not-found segments' server-side
+    // generateMetadata, so the client component must not fight it.
+    expect(document.title).toBe("Git-to-Portfolio");
   });
 
   it("does not navigate for the current or an unsupported locale", () => {
@@ -142,6 +145,24 @@ describe("client components", () => {
 
     expect(navigationMocks.push).toHaveBeenCalledWith("/torvalds?lang=en");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("describes the input with the examples and swaps in the error message", () => {
+    render(<SearchForm locale="en" />);
+    const input = screen.getByRole("textbox", { name: "GitHub username" });
+    const form = screen.getByRole("form", { name: "Create a GitHub portfolio" });
+
+    // The examples block is supplementary help for the input, so it is always
+    // part of the description; the error takes precedence when present.
+    expect(input).toHaveAttribute("aria-describedby", "github-examples");
+
+    fireEvent.submit(form);
+
+    expect(input).toHaveAttribute(
+      "aria-describedby",
+      "github-username-error github-examples"
+    );
+    expect(input).toHaveAttribute("aria-invalid", "true");
   });
 
   it("retains the error until the username is edited", () => {

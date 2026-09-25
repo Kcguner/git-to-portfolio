@@ -472,7 +472,7 @@ export async function getTopRepos(
     q: `user:${login} fork:false archived:false`,
     sort: 'stars',
     order: 'desc',
-    per_page: String(MAX_REPOS),
+    per_page: String(limit),
     page: '1',
   });
   const res = await githubGet(`/search/repositories?${params.toString()}`, options);

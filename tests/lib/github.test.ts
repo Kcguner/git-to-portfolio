@@ -273,7 +273,7 @@ describe('GitHub data layer', () => {
   });
 
   describe('getTopRepos', () => {
-    it('queries the first 100 owner repositories by stars and removes fork/archived items', async () => {
+    it('queries the owner repositories by stars and removes fork/archived items', async () => {
       fetchMock.mockResolvedValueOnce(
         searchResponse([
           repo({ id: 2, name: 'z-last', full_name: 'octocat/z-last', stargazers_count: 5 }),
@@ -317,7 +317,7 @@ describe('GitHub data layer', () => {
         q: 'user:octocat fork:false archived:false',
         sort: 'stars',
         order: 'desc',
-        per_page: '100',
+        per_page: '6',
         page: '1',
       });
       expect(repos.map((item) => item.full_name)).toEqual([
@@ -336,6 +336,32 @@ describe('GitHub data layer', () => {
       );
 
       await expect(getTopRepos('octocat', 1)).resolves.toHaveLength(1);
+    });
+
+    it('asks GitHub for only as many repositories as the caller requested', async () => {
+      fetchMock.mockImplementation(async () => searchResponse([]));
+
+      await getTopRepos('octocat', 3);
+      await getTopRepos('octocat', 12);
+      await getTopRepos('octocat', 2.9);
+
+      const perPage = fetchMock.mock.calls.map(
+        ([url]) => new URL(String(url)).searchParams.get('per_page')
+      );
+      expect(perPage).toEqual(['3', '12', '2']);
+    });
+
+    it('clamps per_page to the 100 repository maximum', async () => {
+      fetchMock.mockImplementation(async () => searchResponse([]));
+
+      await getTopRepos('octocat', 100);
+      await getTopRepos('octocat', 4_096);
+      await expect(getTopRepos('octocat', Number.POSITIVE_INFINITY)).resolves.toEqual([]);
+
+      const perPage = fetchMock.mock.calls.map(
+        ([url]) => new URL(String(url)).searchParams.get('per_page')
+      );
+      expect(perPage).toEqual(['100', '100']);
     });
 
     it('does not call the API for a zero or negative count', async () => {

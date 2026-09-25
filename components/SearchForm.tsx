@@ -77,7 +77,9 @@ export default function SearchForm({ locale }: Props) {
               disabled={isPending}
               aria-invalid={Boolean(error)}
               aria-errormessage={error ? 'github-username-error' : undefined}
-              aria-describedby={error ? 'github-username-error' : undefined}
+              aria-describedby={[error ? 'github-username-error' : null, 'github-examples']
+                .filter(Boolean)
+                .join(' ') || undefined}
               className="input-premium w-full rounded-xl py-4 pl-12 pr-4 text-base text-text-primary placeholder:text-text-muted"
             />
           </div>
@@ -127,7 +129,10 @@ export default function SearchForm({ locale }: Props) {
         </button>
       </form>
 
-      <div id="github-examples" className="mt-6 flex flex-wrap items-center justify-center gap-2 text-sm text-text-muted">
+      <div
+        id="github-examples"
+        className="mt-6 flex flex-wrap items-center justify-center gap-2 text-sm text-text-muted"
+      >
         <span>{dictionary.search.examples}</span>
         {EXAMPLES.map((example, index) => (
           <span key={example.username} className="inline-flex items-center gap-2">

@@ -98,12 +98,12 @@ export default function RepoGrid({ repos, locale }: Props) {
             </p>
 
             <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/70 pt-4 text-xs text-text-muted">
-              <span className="inline-flex items-center gap-1.5" title={dictionary.repositories.stars}>
+              <span className="inline-flex items-center gap-1.5">
                 <span className="sr-only">{dictionary.repositories.stars}: </span>
                 <StarIcon />
                 <span>{repo.stargazers_count.toLocaleString(localeTag)}</span>
               </span>
-              <span className="inline-flex items-center gap-1.5" title={dictionary.repositories.forks}>
+              <span className="inline-flex items-center gap-1.5">
                 <span className="sr-only">{dictionary.repositories.forks}: </span>
                 <ForkIcon />
                 <span>{repo.forks_count.toLocaleString(localeTag)}</span>

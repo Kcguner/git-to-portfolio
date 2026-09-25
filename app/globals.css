@@ -358,8 +358,83 @@
     backdrop-filter: none !important;
   }
 
+  /*
+   * The featured-language bars are `div[role="progressbar"].bg-border` with a
+   * single `div.bg-gradient-to-r` child sized by an inline width. The gradient
+   * is a background-image, which printers drop, so both halves are replaced with
+   * flat greys: the fill is dark enough to read as "this much of the track" on
+   * paper, and the track keeps a hairline border so the full width stays visible.
+   * print-color-adjust is scoped to these bars (and the other background-images
+   * below) instead of being forced globally.
+   */
+  [role="progressbar"] {
+    background: #f4f4f5 !important;
+    border: 1px solid #d4d4d8 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  [role="progressbar"] > div {
+    background: #52525b !important;
+    border: 1px solid #27272a !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Gradient-backed accents that would otherwise print as blank boxes. */
+  .step-number {
+    background: #ffffff !important;
+    border: 1px solid #d4d4d8 !important;
+    color: #111111 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .divider-gradient {
+    background: #d4d4d8 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Solid accent fills lose their contrast once the text is forced to #111. */
+  .bg-accent,
+  .btn-primary {
+    background: #ffffff !important;
+    color: #111111 !important;
+    border: 1px solid #a1a1aa !important;
+  }
+
+  /* Same reasoning for the search field: a dark input would print as a black
+     slab with unreadable (or invisible) text on paper. */
+  .input-premium {
+    background: #ffffff !important;
+    color: #111111 !important;
+    border: 1px solid #d4d4d8 !important;
+    box-shadow: none !important;
+  }
+
+  .placeholder\:text-text-muted::placeholder {
+    color: #52525b !important;
+  }
+
   h1, h2, h3, p, span, dd, dt, a, strong, small {
     color: #111111 !important;
+  }
+
+  /* The element list above misses the text colour utilities on structural
+     elements (plain divs in the home page cards), which would print near-white
+     on white. Accent text keeps a readable dark teal so hierarchy survives. */
+  .text-text-primary,
+  .text-text-secondary,
+  .text-text-muted,
+  .text-surface,
+  .text-white {
+    color: #111111 !important;
+  }
+
+  .text-accent,
+  .section-label {
+    color: #0f766e !important;
   }
 
   a {
@@ -368,9 +443,5 @@
 
   section, li, article {
     break-inside: avoid;
-  }
-
-  .print-break-before {
-    break-before: page;
   }
 }
