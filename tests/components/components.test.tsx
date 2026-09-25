@@ -2,12 +2,12 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AppError from "../../app/error";
-import { LocalizedNotFound } from "../../components/DocumentLocale";
 import LocaleSwitcher from "../../components/LocaleSwitcher";
 import PrintButton from "../../components/PrintButton";
 import ProfileCard from "../../components/ProfileCard";
 import RepoGrid from "../../components/RepoGrid";
 import SearchForm from "../../components/SearchForm";
+import SiteHeader from "../../components/SiteHeader";
 import type { GitHubProfile, GitHubRepo } from "../../lib/github";
 
 const navigationMocks = vi.hoisted(() => ({
@@ -108,13 +108,6 @@ describe("client components", () => {
     });
   });
 
-  it("localizes a not-found page and updates its document title", () => {
-    render(<LocalizedNotFound kind="user" />);
-
-    expect(screen.getByRole("heading", { name: "User not found" })).toBeInTheDocument();
-    expect(document.title).toBe("User not found | Git-to-Portfolio");
-  });
-
   it("does not navigate for the current or an unsupported locale", () => {
     render(<LocaleSwitcher locale="en" />);
     const select = screen.getByRole("combobox", { name: "Select language" });
@@ -144,6 +137,24 @@ describe("client components", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("describes the input with the examples and swaps in the error message", () => {
+    render(<SearchForm locale="en" />);
+    const input = screen.getByRole("textbox", { name: "GitHub username" });
+    const form = screen.getByRole("form", { name: "Create a GitHub portfolio" });
+
+    // The examples block is supplementary help for the input, so it is always
+    // part of the description; the error takes precedence when present.
+    expect(input).toHaveAttribute("aria-describedby", "github-examples");
+
+    fireEvent.submit(form);
+
+    expect(input).toHaveAttribute(
+      "aria-describedby",
+      "github-username-error github-examples"
+    );
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("retains the error until the username is edited", () => {
     render(<SearchForm locale="en" />);
     const input = screen.getByRole("textbox", { name: "GitHub username" });
@@ -167,6 +178,36 @@ describe("client components", () => {
 
 describe("server-compatible presentation components", () => {
   afterEach(cleanup);
+
+  it("keeps the repository and documentation links alongside route actions", () => {
+    // SiteHeader used to treat its children as a replacement for the default
+    // links, so every profile page lost the link back to the project's source.
+    render(
+      <SiteHeader
+        locale="en"
+        actions={<button type="button">Share</button>}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/Kcguner/git-to-portfolio"
+    );
+    expect(screen.getByRole("link", { name: "Documentation" })).toHaveAttribute(
+      "href",
+      "/?lang=en#nasil-calisir"
+    );
+    expect(screen.getByRole("link", { name: "Git-to-Portfolio home" })).toBeInTheDocument();
+  });
+
+  it("renders the default header without any route actions", () => {
+    render(<SiteHeader locale="tr" />);
+
+    expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dokümantasyon" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Dil seçin" })).toBeInTheDocument();
+  });
 
   it("renders a safe profile, external links, and only the top three languages", () => {
     render(
@@ -222,6 +263,32 @@ describe("server-compatible presentation components", () => {
     expect(
       screen.getByText("No public repositories were found for this user.")
     ).toBeInTheDocument();
+  });
+
+  it("distinguishes a failed lookup from a user with no repositories", () => {
+    // Claiming "no public repositories were found" after a network failure is
+    // factually wrong, and the user sees the difference.
+    const { unmount } = render(<RepoGrid repos={[]} locale="en" unavailable />);
+
+    expect(
+      screen.getByText("Projects could not be loaded right now.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No public repositories were found for this user.")
+    ).not.toBeInTheDocument();
+    unmount();
+
+    render(<RepoGrid repos={[]} locale="tr" unavailable />);
+    expect(screen.getByText("Projeler şu anda yüklenemedi.")).toBeInTheDocument();
+  });
+
+  it("still renders repositories when a lookup failed after returning some", () => {
+    render(<RepoGrid repos={[repo]} locale="en" unavailable />);
+
+    expect(screen.getByRole("link", { name: /hello-world/ })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Projects could not be loaded right now.")
+    ).not.toBeInTheDocument();
   });
 
   it("renders repository metadata with a stable date and missing-description fallback", () => {

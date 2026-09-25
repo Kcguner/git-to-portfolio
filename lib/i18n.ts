@@ -1,3 +1,13 @@
+import type { ExampleDescriptionKey } from './examples';
+
+/**
+ * Single source of truth for the version advertised in the UI badge. It mirrors
+ * `package.json#version` and is asserted against it by `tests/lib/i18n.test.ts`
+ * rather than imported, because importing package.json would pull the whole
+ * manifest into the client bundle.
+ */
+export const APP_VERSION = '0.1.0';
+
 export const LOCALES = ['tr', 'en', 'de', 'es'] as const;
 
 export type Locale = (typeof LOCALES)[number];
@@ -34,7 +44,6 @@ const turkish = {
   header: {
     homeLabel: 'Git-to-Portfolio ana sayfa',
     documentation: 'Dokümantasyon',
-    info: 'Bilgi',
   },
   search: {
     formLabel: 'GitHub portföyü oluştur',
@@ -47,7 +56,7 @@ const turkish = {
     examples: 'Örnekler:',
   },
   home: {
-    badge: 'v1.0 — GitHub’dan portföy',
+    badge: `v${APP_VERSION} — GitHub’dan portföy`,
     heroBefore: 'GitHub kullanıcı adını yaz, saniyeler içinde sade ve yazdırılabilir bir ',
     heroHighlight: 'geliştirici portföyü',
     heroAfter: ' oluşsun.',
@@ -73,13 +82,12 @@ const turkish = {
     profilesDescription: 'Bir tıkla gerçek portföyleri incele.',
     liveExamples: 'Canlı örnekler',
     exampleDescriptions: {
+      kcguner: 'Bu sitenin yaratıcısı',
       torvalds: 'Linux yaratıcısı',
-      gaearon: 'Full-stack geliştirici',
-      yyx990803: 'Vue.js yaratıcısı',
-    },
+    } satisfies Record<ExampleDescriptionKey, string>,
     howLink: 'Nasıl çalışır?',
     source: 'Kaynak',
-    copyright: '© 2026 Git-to-Portfolio.',
+    copyright: (year: number) => `© ${year} Git-to-Portfolio.`,
   },
   profile: {
     home: 'Ana sayfa',
@@ -100,6 +108,8 @@ const turkish = {
     footer: 'Git-to-Portfolio ile oluşturuldu · Veriler GitHub API’den alınır',
   },
   repositories: {
+    unavailableTitle: 'Projeler şu anda yüklenemedi.',
+    unavailableDescription: 'GitHub verileri alınırken geçici bir sorun oluştu. Birkaç dakika sonra tekrar dene.',
     emptyTitle: 'Gösterilecek repo yok.',
     emptyDescription: 'Bu kullanıcının herkese açık reposu bulunamadı.',
     projectsLabel: 'Projeler',
@@ -118,6 +128,7 @@ const turkish = {
     shared: 'Portföy paylaşıldı.',
     copyError: 'Bağlantı kopyalanamadı. Adres çubuğundan bağlantıyı kopyalayabilirsiniz.',
     shareError: 'Paylaşım penceresi açılamadı. Adres çubuğundan bağlantıyı kopyalayabilirsiniz.',
+    dismiss: 'Bildirimi kapat',
   },
   notFound: {
     pageLabel: 'Sayfa bulunamadı',
@@ -141,7 +152,6 @@ const turkish = {
     homeDescription: 'GitHub profilinden otomatik, sade ve yazdırılabilir bir geliştirici portföyü oluştur.',
     portfolioDescription: (name: string) => `${name} kullanıcısının GitHub portföyü, öne çıkan projeleri ve repo dilleri.`,
     portfolioTitle: (name: string) => `${name} | GitHub portföyü`,
-    fallbackDescription: (username: string) => `${username} GitHub portföyü — Git-to-Portfolio ile oluşturuldu.`,
   },
 };
 
@@ -156,7 +166,6 @@ export const dictionaries: Record<Locale, Dictionary> = {
     header: {
       homeLabel: 'Git-to-Portfolio home',
       documentation: 'Documentation',
-      info: 'Info',
     },
     search: {
       formLabel: 'Create a GitHub portfolio',
@@ -169,7 +178,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       examples: 'Examples:',
     },
     home: {
-      badge: 'v1.0 — Portfolio from GitHub',
+      badge: `v${APP_VERSION} — Portfolio from GitHub`,
       heroBefore: 'Enter a GitHub username and instantly create a clean, printable ',
       heroHighlight: 'developer portfolio',
       heroAfter: '.',
@@ -195,13 +204,12 @@ export const dictionaries: Record<Locale, Dictionary> = {
       profilesDescription: 'Explore real portfolios with one click.',
       liveExamples: 'Live examples',
       exampleDescriptions: {
+        kcguner: 'Creator of this site',
         torvalds: 'Creator of Linux',
-        gaearon: 'Full-stack developer',
-        yyx990803: 'Creator of Vue.js',
       },
       howLink: 'How it works',
       source: 'Source',
-      copyright: '© 2026 Git-to-Portfolio.',
+      copyright: (year: number) => `© ${year} Git-to-Portfolio.`,
     },
     profile: {
       home: 'Home',
@@ -222,6 +230,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       footer: 'Created with Git-to-Portfolio · Data from the GitHub API',
     },
     repositories: {
+      unavailableTitle: 'Projects could not be loaded right now.',
+      unavailableDescription: 'There was a temporary problem reaching GitHub. Please try again in a few minutes.',
       emptyTitle: 'No repositories to show.',
       emptyDescription: 'No public repositories were found for this user.',
       projectsLabel: 'Projects',
@@ -240,6 +250,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       shared: 'Portfolio shared.',
       copyError: 'The link could not be copied. Copy it from the address bar instead.',
       shareError: 'The share sheet could not be opened. Copy the link from the address bar instead.',
+      dismiss: 'Dismiss notification',
     },
     notFound: {
       pageLabel: 'Page not found',
@@ -263,7 +274,6 @@ export const dictionaries: Record<Locale, Dictionary> = {
       homeDescription: 'Create a simple, printable developer portfolio automatically from a GitHub profile.',
       portfolioDescription: (name) => `GitHub portfolio for ${name}, featuring highlighted projects and repository languages.`,
       portfolioTitle: (name) => `${name} | GitHub portfolio`,
-      fallbackDescription: (username) => `${username} GitHub portfolio — created with Git-to-Portfolio.`,
     },
   },
   de: {
@@ -273,7 +283,6 @@ export const dictionaries: Record<Locale, Dictionary> = {
     header: {
       homeLabel: 'Git-to-Portfolio Startseite',
       documentation: 'Dokumentation',
-      info: 'Info',
     },
     search: {
       formLabel: 'GitHub-Portfolio erstellen',
@@ -286,7 +295,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       examples: 'Beispiele:',
     },
     home: {
-      badge: 'v1.0 — Portfolio aus GitHub',
+      badge: `v${APP_VERSION} — Portfolio aus GitHub`,
       heroBefore: 'Gib einen GitHub-Benutzernamen ein und erstelle in Sekunden ein sauberes, druckbares ',
       heroHighlight: 'Entwicklerportfolio',
       heroAfter: '.',
@@ -312,13 +321,12 @@ export const dictionaries: Record<Locale, Dictionary> = {
       profilesDescription: 'Entdecke echte Portfolios mit einem Klick.',
       liveExamples: 'Live-Beispiele',
       exampleDescriptions: {
+        kcguner: 'Ersteller dieser Seite',
         torvalds: 'Schöpfer von Linux',
-        gaearon: 'Full-Stack-Entwickler',
-        yyx990803: 'Schöpfer von Vue.js',
       },
       howLink: 'So funktioniert’s',
       source: 'Quellcode',
-      copyright: '© 2026 Git-to-Portfolio.',
+      copyright: (year: number) => `© ${year} Git-to-Portfolio.`,
     },
     profile: {
       home: 'Startseite',
@@ -339,6 +347,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       footer: 'Erstellt mit Git-to-Portfolio · Daten von der GitHub API',
     },
     repositories: {
+      unavailableTitle: 'Projekte konnten gerade nicht geladen werden.',
+      unavailableDescription: 'Beim Abrufen von GitHub-Daten ist ein vorübergehendes Problem aufgetreten. Bitte in wenigen Minuten erneut versuchen.',
       emptyTitle: 'Keine Repositories vorhanden.',
       emptyDescription: 'Für dieses Benutzerkonto wurden keine öffentlichen Repositories gefunden.',
       projectsLabel: 'Projekte',
@@ -357,6 +367,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       shared: 'Portfolio geteilt.',
       copyError: 'Der Link konnte nicht kopiert werden. Kopiere ihn stattdessen aus der Adressleiste.',
       shareError: 'Das Freigabemenü konnte nicht geöffnet werden. Kopiere den Link stattdessen aus der Adressleiste.',
+      dismiss: 'Hinweis schließen',
     },
     notFound: {
       pageLabel: 'Seite nicht gefunden',
@@ -380,7 +391,6 @@ export const dictionaries: Record<Locale, Dictionary> = {
       homeDescription: 'Erstelle automatisch ein einfaches, druckbares Entwicklerportfolio aus einem GitHub-Profil.',
       portfolioDescription: (name) => `GitHub-Portfolio von ${name} mit ausgewählten Projekten und Repository-Sprachen.`,
       portfolioTitle: (name) => `${name} | GitHub-Portfolio`,
-      fallbackDescription: (username) => `${username} GitHub-Portfolio — erstellt mit Git-to-Portfolio.`,
     },
   },
   es: {
@@ -390,7 +400,6 @@ export const dictionaries: Record<Locale, Dictionary> = {
     header: {
       homeLabel: 'Inicio de Git-to-Portfolio',
       documentation: 'Documentación',
-      info: 'Información',
     },
     search: {
       formLabel: 'Crear un portfolio de GitHub',
@@ -403,7 +412,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       examples: 'Ejemplos:',
     },
     home: {
-      badge: 'v1.0 — Portfolio desde GitHub',
+      badge: `v${APP_VERSION} — Portfolio desde GitHub`,
       heroBefore: 'Escribe un nombre de usuario de GitHub y crea al instante un ',
       heroHighlight: 'portfolio de desarrollador',
       heroAfter: ' limpio e imprimible.',
@@ -429,13 +438,12 @@ export const dictionaries: Record<Locale, Dictionary> = {
       profilesDescription: 'Explora portfolios reales con un clic.',
       liveExamples: 'Ejemplos en vivo',
       exampleDescriptions: {
+        kcguner: 'Creador de este sitio',
         torvalds: 'Creador de Linux',
-        gaearon: 'Desarrollador full-stack',
-        yyx990803: 'Creador de Vue.js',
       },
       howLink: 'Cómo funciona',
       source: 'Código fuente',
-      copyright: '© 2026 Git-to-Portfolio.',
+      copyright: (year: number) => `© ${year} Git-to-Portfolio.`,
     },
     profile: {
       home: 'Inicio',
@@ -456,6 +464,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
       footer: 'Creado con Git-to-Portfolio · Datos de la API de GitHub',
     },
     repositories: {
+      unavailableTitle: 'No se pudieron cargar los proyectos.',
+      unavailableDescription: 'Hubo un problema temporal al conectar con GitHub. Inténtalo de nuevo en unos minutos.',
       emptyTitle: 'No hay repositorios para mostrar.',
       emptyDescription: 'No se encontraron repositorios públicos para este usuario.',
       projectsLabel: 'Proyectos',
@@ -474,6 +484,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       shared: 'Portfolio compartido.',
       copyError: 'No se pudo copiar el enlace. Cópialo de la barra de direcciones.',
       shareError: 'No se pudo abrir el menú de compartir. Copia el enlace de la barra de direcciones.',
+      dismiss: 'Descartar la notificación',
     },
     notFound: {
       pageLabel: 'Página no encontrada',
@@ -497,7 +508,6 @@ export const dictionaries: Record<Locale, Dictionary> = {
       homeDescription: 'Crea automáticamente un portfolio de desarrollador sencillo e imprimible a partir de un perfil de GitHub.',
       portfolioDescription: (name) => `Portfolio de GitHub de ${name}, con proyectos destacados y lenguajes de repositorios.`,
       portfolioTitle: (name) => `${name} | Portfolio de GitHub`,
-      fallbackDescription: (username) => `Portfolio de GitHub de ${username}: creado con Git-to-Portfolio.`,
     },
   },
 };

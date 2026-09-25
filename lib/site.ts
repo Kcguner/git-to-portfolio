@@ -117,8 +117,20 @@ function normalizeSiteUrl(value: string | undefined): string | undefined {
   }
 }
 
+/**
+ * Canonical origin for sharing, metadata, robots.txt and sitemap.xml.
+ *
+ * Deliberately NOT `NEXT_PUBLIC_`-prefixed: everything that reads it is a
+ * Server Component or a metadata route, so the value never has to reach the
+ * browser, and an unprefixed name keeps it out of the client bundle. The
+ * `NEXT_PUBLIC_` name is still honoured so a deployment that already set it
+ * keeps working.
+ */
 export function getSiteUrl(): string {
-  return normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL) ?? DEFAULT_SITE_URL;
+  return (
+    normalizeSiteUrl(process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL) ??
+    DEFAULT_SITE_URL
+  );
 }
 
 function getValidGitHubRepoUrl(value: string): string | undefined {
@@ -137,9 +149,16 @@ function getValidGitHubRepoUrl(value: string): string | undefined {
   }
 }
 
+/**
+ * Public source repository URL shown in the header and footer.
+ *
+ * Also server-only, so the `NEXT_PUBLIC_` prefix is unnecessary here for the
+ * same reason as in `getSiteUrl()`. The old name stays supported.
+ */
 export function getGitHubRepoUrl(): string {
   return (
-    getValidGitHubRepoUrl(process.env.NEXT_PUBLIC_GITHUB_REPO_URL ?? "") ??
-    DEFAULT_GITHUB_REPO_URL
+    getValidGitHubRepoUrl(
+      process.env.GITHUB_REPO_URL ?? process.env.NEXT_PUBLIC_GITHUB_REPO_URL ?? ""
+    ) ?? DEFAULT_GITHUB_REPO_URL
   );
 }

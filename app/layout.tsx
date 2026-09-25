@@ -1,7 +1,9 @@
 import { Suspense } from "react";
+import { headers } from "next/headers";
 import type { Metadata, Viewport } from "next";
 import DocumentLocale from "@/components/DocumentLocale";
 import { LOCALE_TAGS, LOCALES, withLocale } from "@/lib/i18n";
+import { getLocaleFromHeaderValue, LOCALE_HEADER } from "@/lib/locale-negotiation";
 import { getSiteUrl } from "@/lib/site";
 import "./fonts.scss";
 import "./globals.css";
@@ -57,9 +59,21 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // Proxy resolves the effective locale (explicit ?lang= > Accept-Language >
+  // default) and forwards it on the request. Reading it here means the SSR
+  // HTML already carries the right <html lang> for screen readers, crawlers
+  // and clients without JavaScript. Reading headers makes the layout dynamic,
+  // which both routes already were; the metadata routes (robots, sitemap,
+  // manifest, opengraph-image) do not render this layout and stay static.
+  const locale = getLocaleFromHeaderValue((await headers()).get(LOCALE_HEADER));
+
   return (
-    <html lang="tr" className="dark">
+    <html lang={locale} className="dark">
       <body className="noise-bg min-h-screen antialiased">
         <div className="fixed inset-0 grid-bg pointer-events-none" aria-hidden="true" />
         <div className="fixed inset-0 glow-top pointer-events-none" aria-hidden="true" />

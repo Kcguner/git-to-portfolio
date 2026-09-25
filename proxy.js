@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { LOCALE_HEADER, resolveRequestLocale } from "@/lib/locale-negotiation";
 
 export function proxy(request) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
@@ -29,9 +30,20 @@ export function proxy(request) {
     ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 
+  // Root layouts cannot read searchParams, so the effective locale is resolved
+  // here and handed to the server render through a request header. An explicit
+  // ?lang= wins over Accept-Language negotiation, which wins over the default.
+  const searchParams = request.nextUrl.searchParams;
+  const locale = resolveRequestLocale({
+    lang: searchParams.has("lang") ? searchParams.getAll("lang") : undefined,
+    acceptLanguage: request.headers.get("accept-language"),
+  });
+
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", policy);
+  // Set unconditionally so a client-supplied value is always overwritten.
+  requestHeaders.set(LOCALE_HEADER, locale);
 
   const response = NextResponse.next({
     request: {
@@ -46,7 +58,8 @@ export function proxy(request) {
 export const config = {
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
+      // favicon.ico yok; projede app/icon.svg kullanılıyor.
+      source: "/((?!api|_next/static|_next/image|icon.svg).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

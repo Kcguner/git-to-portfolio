@@ -4,6 +4,12 @@ import { getDictionary, LOCALE_TAGS, type Locale } from '@/lib/i18n';
 type Props = {
   repos: GitHubRepo[];
   locale: Locale;
+  /**
+   * Set when the repository lookup itself failed. The empty state then has to
+   * say so: claiming that a user has no public repositories when the request
+   * merely timed out is worse than showing nothing.
+   */
+  unavailable?: boolean;
 };
 
 function StarIcon() {
@@ -46,9 +52,18 @@ function formatUpdatedAt(iso: string, locale: Locale): string {
   });
 }
 
-export default function RepoGrid({ repos, locale }: Props) {
+export default function RepoGrid({ repos, locale, unavailable = false }: Props) {
   const dictionary = getDictionary(locale);
   const localeTag = LOCALE_TAGS[locale];
+
+  if (unavailable && repos.length === 0) {
+    return (
+      <section className="card-premium rounded-2xl p-8 text-center">
+        <p className="text-text-primary">{dictionary.repositories.unavailableTitle}</p>
+        <p className="mt-1 text-sm text-text-muted">{dictionary.repositories.unavailableDescription}</p>
+      </section>
+    );
+  }
 
   if (repos.length === 0) {
     return (
@@ -98,12 +113,12 @@ export default function RepoGrid({ repos, locale }: Props) {
             </p>
 
             <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/70 pt-4 text-xs text-text-muted">
-              <span className="inline-flex items-center gap-1.5" title={dictionary.repositories.stars}>
+              <span className="inline-flex items-center gap-1.5">
                 <span className="sr-only">{dictionary.repositories.stars}: </span>
                 <StarIcon />
                 <span>{repo.stargazers_count.toLocaleString(localeTag)}</span>
               </span>
-              <span className="inline-flex items-center gap-1.5" title={dictionary.repositories.forks}>
+              <span className="inline-flex items-center gap-1.5">
                 <span className="sr-only">{dictionary.repositories.forks}: </span>
                 <ForkIcon />
                 <span>{repo.forks_count.toLocaleString(localeTag)}</span>

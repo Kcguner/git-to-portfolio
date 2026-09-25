@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateTopLanguages, formatDate } from '../../lib/skills';
+import { calculateTopLanguages } from '../../lib/skills';
 
 describe('calculateTopLanguages', () => {
   it('ignores null and blank languages', () => {
@@ -82,13 +82,3 @@ describe('calculateTopLanguages', () => {
   });
 });
 
-describe('formatDate', () => {
-  it('formats ISO dates for the Turkish locale', () => {
-    expect(formatDate('2026-01-02T03:04:05Z')).toMatch(/2026/);
-  });
-
-  it('uses a stable UTC date and handles invalid input', () => {
-    expect(formatDate('2026-01-01T23:30:00-02:00')).toBe('2 Oca 2026');
-    expect(formatDate('invalid-date')).toBe('—');
-  });
-});

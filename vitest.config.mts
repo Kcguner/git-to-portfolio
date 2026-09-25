@@ -27,7 +27,6 @@ export default defineConfig({
         "app/**/opengraph-image.tsx",
         "app/**/not-found.tsx",
         "app/layout.tsx",
-        "app/**/loading.tsx",
         "app/**/template.tsx",
         "app/**/route.ts",
         "node_modules/**",
