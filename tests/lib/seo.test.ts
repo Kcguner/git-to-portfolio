@@ -53,7 +53,6 @@ const PROFILE = {
   description: "GitHub mascot",
   avatarUrl: "https://avatars.githubusercontent.com/u/1?v=4",
   profileUrl: "https://github.com/octocat",
-  createdAt: "2011-01-25T18:44:36Z",
   blogUrl: null,
   twitterUsername: null,
   repositories: [

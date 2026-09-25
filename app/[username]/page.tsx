@@ -206,7 +206,6 @@ export default async function UserPage({ params, searchParams }: PageProps) {
           description,
           avatarUrl: profile.avatar_url,
           profileUrl: profile.html_url,
-          createdAt: profile.created_at,
           blogUrl: profile.blog,
           twitterUsername: profile.twitter_username,
           repositories: topRepos.map((repo) => ({

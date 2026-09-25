@@ -413,7 +413,6 @@ describe("profile page", () => {
       '@type': string;
       url: string;
       inLanguage: string;
-      dateCreated: string;
       mainEntity: {
         '@type': string;
         name: string;
@@ -436,7 +435,9 @@ describe("profile page", () => {
     // languages describe one person rather than four.
     expect(payload.url).toBe("https://git-to-portfolio.vercel.app/octocat?lang=de");
     expect(payload.inLanguage).toBe("de-DE");
-    expect(payload.dateCreated).toBe("2011-01-25T18:44:36Z");
+    // No `dateCreated`: the account's `created_at` would date the portfolio to
+    // the day the GitHub account was opened, which says nothing about the page.
+    expect(payload).not.toHaveProperty("dateCreated");
     expect(payload.mainEntity).toMatchObject({
       '@type': "Person",
       name: "The Octocat",

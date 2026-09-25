@@ -265,7 +265,6 @@ export type ProfileJsonLdInput = {
   description: string;
   avatarUrl: string;
   profileUrl: string;
-  createdAt: string;
   blogUrl: string | null;
   twitterUsername: string | null;
   repositories: {
@@ -284,9 +283,9 @@ export type ProfileJsonLdInput = {
  * as `knowsAbout`.
  *
  * Only facts the page itself shows are emitted: the six displayed
- * repositories, the languages derived from them, and the account's own
- * creation date. Repository descriptions fall back to nothing rather than to
- * invented text, so an absent description stays absent in the markup.
+ * repositories and the languages derived from them. Repository descriptions
+ * fall back to nothing rather than to invented text, so an absent description
+ * stays absent in the markup.
  */
 export function getProfileJsonLd({
   locale,
@@ -296,7 +295,6 @@ export function getProfileJsonLd({
   description,
   avatarUrl,
   profileUrl,
-  createdAt,
   blogUrl,
   twitterUsername,
   repositories,
@@ -316,9 +314,9 @@ export function getProfileJsonLd({
     description,
     inLanguage: LOCALE_TAGS[locale],
     image: getAbsoluteUrl(getProfileOpenGraphImagePath(login, locale)),
-    // WebPage's own creation date is the account's, which is the only creation
-    // date GitHub reports and the only one a reader can verify on the page.
-    dateCreated: createdAt,
+    // No `dateCreated`: the page shows no creation date, and the account's own
+    // `created_at` would date the portfolio to the day the GitHub account was
+    // opened, which is a fact about GitHub rather than about this page.
     mainEntity: {
       "@type": "Person",
       "@id": personId,
