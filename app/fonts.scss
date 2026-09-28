@@ -1,4 +1,7 @@
 // Turbopack resolves these URLs relative to each package's mixins.scss.
+// The font families are renamed to their marketing names so the stacks in
+// tailwind.config.ts and globals.css read the same as the CSS they style:
+// @fontsource-variable/fraunces would otherwise register "Fraunces Variable".
 @use "@fontsource/inter/scss/mixins" as inter with (
   $directory: "../files",
   $formats: (woff2),
@@ -11,6 +14,18 @@
   $subsets: (latin, latin-ext),
   $weights: (400, 500, 600, 700)
 );
+// The display serif. Only the `wght` axis is shipped (one file per subset and
+// style instead of the full four-axis family), because the design needs weight
+// and italics for accent words, not optical size, softness or wonk.
+@use "@fontsource-variable/fraunces/scss/mixins" as fraunces with (
+  $directory: "../files",
+  $family: "Fraunces",
+  $formats: (woff2),
+  $subsets: (latin, latin-ext),
+  $styles: (normal, italic),
+  $axes: (wght)
+);
 
 @include inter.faces;
 @include jetbrains-mono.faces;
+@include fraunces.faces;

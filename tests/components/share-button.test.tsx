@@ -6,7 +6,6 @@ import ShareButton from '../../components/ShareButton';
 const shareProps = {
   locale: 'en' as const,
   title: 'Ada | GitHub portfolio',
-  text: 'Ada’s selected projects and repository languages.',
   url: 'https://portfolio.example.test/ada?lang=en',
 };
 
@@ -44,7 +43,6 @@ describe('ShareButton', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Portfolio shared.');
     expect(share).toHaveBeenCalledWith({
       title: shareProps.title,
-      text: shareProps.text,
       url: shareProps.url,
     });
     expect(writeText).not.toHaveBeenCalled();

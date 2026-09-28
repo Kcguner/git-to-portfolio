@@ -28,6 +28,11 @@ export interface GitHubRepo {
   updated_at: string;
   fork: boolean;
   archived: boolean;
+  /**
+   * Repository topics, already capped to `MAX_TOPICS`. Always an array: a
+   * repository without topics is not a special case, it is the common one.
+   */
+  topics: string[];
 }
 
 export type GitHubErrorCode =
@@ -112,9 +117,16 @@ type GitHubFetchInit = RequestInit & {
   cache?: 'force-cache' | 'no-store';
 };
 
+/** What distinguishes one GitHub call from another; the rest is shared. */
+type GitHubCall = {
+  method: 'GET' | 'POST';
+  body?: string;
+};
+
 type UnknownRecord = Record<string, unknown>;
 
 const BASE = 'https://api.github.com';
+const GRAPHQL_PATH = '/graphql';
 const API_VERSION = '2022-11-28';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_RETRIES = 2;
@@ -122,6 +134,15 @@ const DEFAULT_RETRY_BASE_DELAY_MS = 250;
 const MAX_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 5_000;
 const MAX_REPOS = 100;
+/**
+ * Topics shown on a project card. The cap is applied where the data is parsed,
+ * not where it is rendered, so the payload and the layout agree on one number:
+ * GitHub allows twenty topics per repository, all of which would be fetched,
+ * serialised through the RSC payload and then dropped.
+ */
+const MAX_TOPICS = 3;
+/** Pinned items the portfolio can display, and therefore the GraphQL page size. */
+const MAX_PINNED_REPOS = 6;
 /**
  * How many 100-repository pages of a user's listing are ranked locally. One
  * page already covers the large majority of accounts; every extra page costs
@@ -141,17 +162,23 @@ const RETRYABLE_NETWORK_ERROR_CODES = new Set([
   'UND_ERR_SOCKET',
 ]);
 
-function headers(): HeadersInit {
+function headers(contentType?: string): HeadersInit {
   const result: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': API_VERSION,
     'User-Agent': 'git-to-portfolio',
   };
+  if (contentType) result['Content-Type'] = contentType;
   const token = process.env.GITHUB_TOKEN?.trim();
   if (token) {
     result.Authorization = `Bearer ${token}`;
   }
   return result;
+}
+
+/** The shared cache opt-out: either a hard no-store or an hourly revalidate. */
+function cacheInit(options: GitHubRequestOptions): Pick<GitHubFetchInit, 'next' | 'cache'> {
+  return options.cache === 'no-store' ? { cache: 'no-store' } : { next: { revalidate: 3600 } };
 }
 
 function clampInteger(value: number | undefined, fallback: number, max: number): number {
@@ -232,7 +259,8 @@ function wait(ms: number): Promise<void> {
 }
 
 async function fetchOnce(
-  path: string,
+  url: string,
+  call: GitHubCall,
   options: GitHubRequestOptions,
   timeoutMs: number
 ): Promise<Response> {
@@ -252,16 +280,15 @@ async function fetchOnce(
   }, timeoutMs);
 
   const init: GitHubFetchInit = {
-    method: 'GET',
-    headers: headers(),
+    method: call.method,
+    headers: headers(call.body ? 'application/json' : undefined),
     signal: controller.signal,
-    ...(options.cache === 'no-store'
-      ? { cache: 'no-store' as const }
-      : { next: { revalidate: 3600 } }),
+    ...cacheInit(options),
+    ...(call.body ? { body: call.body } : {}),
   };
 
   try {
-    return await fetch(`${BASE}${path}`, init);
+    return await fetch(url, init);
   } catch (error) {
     if (timedOut) throw new GitHubTimeoutError({ cause: error });
     throw error;
@@ -271,8 +298,13 @@ async function fetchOnce(
   }
 }
 
-async function githubGet(
-  path: string,
+/**
+ * One GitHub call with the shared timeout, bounded retry and error mapping, so
+ * the REST and GraphQL paths fail (or survive) in exactly the same way.
+ */
+async function githubRequest(
+  url: string,
+  call: GitHubCall,
   options: GitHubRequestOptions
 ): Promise<Response> {
   const timeoutMs = clampInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS, 120_000);
@@ -287,7 +319,7 @@ async function githubGet(
     let res: Response;
 
     try {
-      res = await fetchOnce(path, options, timeoutMs);
+      res = await fetchOnce(url, call, options, timeoutMs);
     } catch (error) {
       if (options.signal?.aborted) throw error;
       if (isRetryableNetworkError(error) && attempt < maxRetries) {
@@ -308,6 +340,10 @@ async function githubGet(
   }
 
   throw new GitHubUpstreamError();
+}
+
+function githubGet(path: string, options: GitHubRequestOptions): Promise<Response> {
+  return githubRequest(`${BASE}${path}`, { method: 'GET' }, options);
 }
 
 async function readJson(res: Response): Promise<unknown> {
@@ -369,6 +405,41 @@ function requireBoolean(record: UnknownRecord, field: string, path: string): boo
   return value;
 }
 
+/**
+ * REST `topics` is a plain string array. A response that carries anything else
+ * has nothing to show, so it degrades to an empty list rather than rejecting
+ * the whole page over a decorative field.
+ */
+function parseTopics(value: unknown): string[] {
+  if (!Array.isArray(value) || !value.every(isString)) return [];
+  return value.slice(0, MAX_TOPICS);
+}
+
+/** The same list as GraphQL returns it, as a connection of topic wrappers. */
+function parsePinnedTopics(value: unknown, path: string): string[] {
+  const topicsPath = `${path}.repositoryTopics`;
+  const nodes = requireRecord(value, topicsPath).nodes;
+  if (!Array.isArray(nodes)) {
+    throw new TypeError(`GitHub response field ${topicsPath}.nodes must be an array`);
+  }
+
+  const topics: string[] = [];
+  for (const [index, node] of nodes.entries()) {
+    const nodePath = `${topicsPath}.nodes[${index}]`;
+    const topicPath = `${nodePath}.topic`;
+    const topic = requireRecord(requireRecord(node, nodePath).topic, topicPath);
+    topics.push(requireString(topic, 'name', topicPath));
+  }
+  return topics.slice(0, MAX_TOPICS);
+}
+
+function requireNamedRepo(repo: GitHubRepo, path: string): GitHubRepo {
+  if (repo.name === '' || repo.full_name === '') {
+    throw new TypeError(`GitHub response field ${path} contains an empty repository name`);
+  }
+  return repo;
+}
+
 function parseProfile(value: unknown): GitHubProfile {
   const path = 'profile';
   const record = requireRecord(value, path);
@@ -406,12 +477,10 @@ function parseRepo(value: unknown, path: string): GitHubRepo {
     updated_at: requireString(record, 'updated_at', path),
     fork: requireBoolean(record, 'fork', path),
     archived: requireBoolean(record, 'archived', path),
+    topics: parseTopics(record.topics),
   };
 
-  if (repo.name === '' || repo.full_name === '') {
-    throw new TypeError(`GitHub response field ${path} contains an empty repository name`);
-  }
-  return repo;
+  return requireNamedRepo(repo, path);
 }
 
 function compareStrings(left: string, right: string): number {
@@ -524,4 +593,161 @@ export async function getTopRepos(
       return starDifference !== 0 ? starDifference : compareStrings(left.full_name, right.full_name);
     })
     .slice(0, limit);
+}
+
+/**
+ * The repositories a user pinned on their profile, in the order they chose.
+ *
+ * `pinnedItems` is GraphQL-only - the REST API has no pinned endpoint at all -
+ * so this is the one lookup on the site that needs the GraphQL API. The fields
+ * are aliased to their REST names, which keeps a single repository shape in the
+ * rest of the app: the ranking and the pinned list are then interchangeable and
+ * only the section heading differs.
+ *
+ * `databaseId` is the REST `id`; the GraphQL `id` is an opaque node id with no
+ * place in a shape that also has to hold REST repositories. Only the columns
+ * the page renders are requested, and `updatedAt` alone is the date it shows.
+ */
+const PINNED_REPOS_QUERY = `query PinnedRepositories($login: String!, $first: Int!) {
+  user(login: $login) {
+    pinnedItems(first: $first, types: REPOSITORY) {
+      nodes {
+        ... on Repository {
+          databaseId
+          name
+          nameWithOwner
+          url
+          description
+          stargazers: stargazerCount
+          forks: forkCount
+          primaryLanguage { name }
+          repositoryTopics(first: 5) { nodes { topic { name } } }
+          isFork
+          isArchived
+          updatedAt
+        }
+      }
+    }
+  }
+}`;
+
+function parsePinnedRepo(value: unknown, path: string): GitHubRepo {
+  const record = requireRecord(value, path);
+  const languagePath = `${path}.primaryLanguage`;
+  const primaryLanguage = record.primaryLanguage;
+
+  const repo: GitHubRepo = {
+    id: requireNonNegativeInteger(record, 'databaseId', path),
+    name: requireString(record, 'name', path),
+    full_name: requireString(record, 'nameWithOwner', path),
+    html_url: requireString(record, 'url', path),
+    description: requireNullableString(record, 'description', path),
+    stargazers_count: requireNonNegativeInteger(record, 'stargazers', path),
+    forks_count: requireNonNegativeInteger(record, 'forks', path),
+    language:
+      primaryLanguage === null || primaryLanguage === undefined
+        ? null
+        : requireString(requireRecord(primaryLanguage, languagePath), 'name', languagePath),
+    updated_at: requireString(record, 'updatedAt', path),
+    fork: requireBoolean(record, 'isFork', path),
+    archived: requireBoolean(record, 'isArchived', path),
+    topics: parsePinnedTopics(record.repositoryTopics, path),
+  };
+
+  return requireNamedRepo(repo, path);
+}
+
+function parsePinnedResponse(value: unknown): GitHubRepo[] {
+  const response = requireRecord(value, 'response');
+  // GraphQL reports its failures inside a 200 response, so a body carrying
+  // errors is a failed query, not a successful one with data.
+  if (Array.isArray(response.errors) && response.errors.length > 0) {
+    throw new GitHubUpstreamError();
+  }
+
+  const data = requireRecord(response.data, 'response.data');
+  const user = requireRecord(data.user, 'response.data.user');
+  const pinnedItems = requireRecord(
+    user.pinnedItems,
+    'response.data.user.pinnedItems'
+  );
+  const nodes = pinnedItems.nodes;
+  if (!Array.isArray(nodes)) {
+    throw new TypeError('GitHub response field response.data.user.pinnedItems.nodes must be an array');
+  }
+
+  return nodes
+    // A union selection yields null for every type the fragment does not
+    // describe. `types: REPOSITORY` should rule them out; one that slips
+    // through is not a repository and is simply not shown.
+    .filter((node) => node !== null && node !== undefined)
+    .map((node, index) => parsePinnedRepo(node, `pinnedItems.nodes[${index}]`));
+}
+
+/**
+ * A short, non-sensitive description of a GitHub failure for logs: the error
+ * code and the HTTP status only, never the response body or the token.
+ *
+ * Exported so every caller that logs a failed lookup - the page and the pinned
+ * lookup below - describes the same failure the same way.
+ */
+export function describeFailure(error: unknown): string {
+  if (error instanceof GitHubError) {
+    return error.status === undefined ? error.code : `${error.code} (status ${error.status})`;
+  }
+  return 'unknown';
+}
+
+/**
+ * The user's own picks, or `null` for "use the fallback".
+ *
+ * This never throws, because a missing feature is a far better outcome than a
+ * broken page: the caller falls back to the starred ranking and the reader sees
+ * the same six cells either way. Every failure - no token, auth, rate limit,
+ * timeout, unexpected shape, a user who pinned nothing - returns `null`.
+ */
+export async function getPinnedRepos(
+  username: string,
+  options: GitHubRequestOptions = {}
+): Promise<GitHubRepo[] | null> {
+  // The GraphQL API has no anonymous quota, so without a token the request
+  // could only ever fail. Not having a token is a configuration, not a fault,
+  // and it is not warned about.
+  if (!process.env.GITHUB_TOKEN?.trim()) return null;
+
+  let login: string;
+  try {
+    login = requireUsername(username);
+  } catch {
+    return null;
+  }
+
+  try {
+    const res = await githubRequest(
+      `${BASE}${GRAPHQL_PATH}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          query: PINNED_REPOS_QUERY,
+          variables: { login, first: MAX_PINNED_REPOS },
+        }),
+      },
+      options
+    );
+    const body = await readJson(res);
+
+    try {
+      return parsePinnedResponse(body);
+    } catch (error) {
+      if (error instanceof GitHubError) throw error;
+      throw new GitHubUpstreamError({ status: res.status, cause: error });
+    }
+  } catch (error) {
+    // Warn, not error: the fallback renders a complete page, and `console.error`
+    // would trip the Next.js dev error overlay for a handled degradation.
+    console.warn(
+      `[github] pinned repository lookup failed (${describeFailure(error)}); falling back to the starred list`
+    );
+    return null;
+  }
 }

@@ -41,6 +41,11 @@ const turkish = {
   localeSwitcher: {
     label: 'Dil seçin',
   },
+  theme: {
+    label: 'Tema',
+    toNight: 'Gece moduna geç',
+    toPaper: 'Gündüz moduna geç',
+  },
   header: {
     homeLabel: 'Git-to-Portfolio ana sayfa',
     documentation: 'Dokümantasyon',
@@ -95,7 +100,7 @@ const turkish = {
     portfolioTitle: 'GitHub portföyü',
     developerProfile: 'Geliştirici profili',
     avatarAlt: 'avatar',
-    avatarTitle: 'GitHub profil bağlantısı',
+    profileLoading: 'Profil yükleniyor…',
     followers: 'Takipçi',
     following: 'Takip',
     repositories: 'Repo',
@@ -104,7 +109,10 @@ const turkish = {
     featuredLanguages: 'Öne çıkan repo dilleri',
     topThree: 'TOP 3',
     topLanguages: 'En çok görülen 3 dil',
-    languagePercent: (name: string, percent: number) => `${name} yüzde ${percent}`,
+    // The percentage arrives already formatted for the locale by Intl
+    // (`%60` in tr, `60%` in en, `60 %` in de/es), so each locale only decides
+    // how the name and the value are joined in an aria-label.
+    languagePercent: (name: string, formattedPercent: string) => `${name} ${formattedPercent}`,
     footer: 'Git-to-Portfolio ile oluşturuldu · Veriler GitHub API’den alınır',
   },
   repositories: {
@@ -114,6 +122,7 @@ const turkish = {
     emptyDescription: 'Bu kullanıcının herkese açık reposu bulunamadı.',
     projectsLabel: 'Projeler',
     title: 'Öne çıkan repolar',
+    pinnedTitle: 'Sabitlenmiş repolar',
     projectCount: (count: number) => `${count} PROJE`,
     missingDescription: 'Bu proje için açıklama bulunmuyor.',
     stars: 'Yıldız',
@@ -195,6 +204,11 @@ export const dictionaries: Record<Locale, Dictionary> = {
     localeSwitcher: {
       label: 'Select language',
     },
+    theme: {
+      label: 'Theme',
+      toNight: 'Switch to night theme',
+      toPaper: 'Switch to paper theme',
+    },
     header: {
       homeLabel: 'Git-to-Portfolio home',
       documentation: 'Documentation',
@@ -249,7 +263,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       portfolioTitle: 'GitHub portfolio',
       developerProfile: 'Developer profile',
       avatarAlt: 'avatar',
-      avatarTitle: 'GitHub profile link',
+      profileLoading: 'Loading profile…',
       followers: 'Followers',
       following: 'Following',
       repositories: 'Repos',
@@ -258,7 +272,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       featuredLanguages: 'Featured repository languages',
       topThree: 'TOP 3',
       topLanguages: 'Top 3 languages',
-      languagePercent: (name, percent) => `${name}, ${percent} percent`,
+      languagePercent: (name, formattedPercent) => `${name}, ${formattedPercent}`,
       footer: 'Created with Git-to-Portfolio · Data from the GitHub API',
     },
     repositories: {
@@ -268,6 +282,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       emptyDescription: 'No public repositories were found for this user.',
       projectsLabel: 'Projects',
       title: 'Featured repositories',
+      pinnedTitle: 'Pinned repositories',
       projectCount: (count) => `${count} PROJECTS`,
       missingDescription: 'No description is available for this project.',
       stars: 'Stars',
@@ -344,6 +359,11 @@ export const dictionaries: Record<Locale, Dictionary> = {
     localeSwitcher: {
       label: 'Sprache auswählen',
     },
+    theme: {
+      label: 'Design',
+      toNight: 'Zum Nachtmodus wechseln',
+      toPaper: 'Zum Papiermodus wechseln',
+    },
     header: {
       homeLabel: 'Git-to-Portfolio Startseite',
       documentation: 'Dokumentation',
@@ -398,7 +418,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       portfolioTitle: 'GitHub-Portfolio',
       developerProfile: 'Entwicklerprofil',
       avatarAlt: 'Profilbild',
-      avatarTitle: 'Link zum GitHub-Profil',
+      profileLoading: 'Profil wird geladen…',
       followers: 'Follower',
       following: 'Folgt',
       repositories: 'Repos',
@@ -407,7 +427,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       featuredLanguages: 'Sprachen der ausgewählten Repositories',
       topThree: 'TOP 3',
       topLanguages: 'Top 3 Sprachen',
-      languagePercent: (name, percent) => `${name}, ${percent} Prozent`,
+      languagePercent: (name, formattedPercent) => `${name}, ${formattedPercent}`,
       footer: 'Erstellt mit Git-to-Portfolio · Daten von der GitHub API',
     },
     repositories: {
@@ -417,6 +437,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       emptyDescription: 'Für dieses Benutzerkonto wurden keine öffentlichen Repositories gefunden.',
       projectsLabel: 'Projekte',
       title: 'Ausgewählte Repositories',
+      pinnedTitle: 'Angeheftete Repositories',
       projectCount: (count) => `${count} PROJEKTE`,
       missingDescription: 'Für dieses Projekt ist keine Beschreibung verfügbar.',
       stars: 'Sterne',
@@ -493,6 +514,11 @@ export const dictionaries: Record<Locale, Dictionary> = {
     localeSwitcher: {
       label: 'Seleccionar idioma',
     },
+    theme: {
+      label: 'Tema',
+      toNight: 'Cambiar al tema nocturno',
+      toPaper: 'Cambiar al tema de papel',
+    },
     header: {
       homeLabel: 'Inicio de Git-to-Portfolio',
       documentation: 'Documentación',
@@ -547,7 +573,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       portfolioTitle: 'Portfolio de GitHub',
       developerProfile: 'Perfil de desarrollador',
       avatarAlt: 'avatar',
-      avatarTitle: 'Enlace al perfil de GitHub',
+      profileLoading: 'Cargando el perfil…',
       followers: 'Seguidores',
       following: 'Siguiendo',
       repositories: 'Repos',
@@ -556,7 +582,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       featuredLanguages: 'Lenguajes destacados',
       topThree: 'TOP 3',
       topLanguages: '3 lenguajes principales',
-      languagePercent: (name, percent) => `${name}, ${percent} por ciento`,
+      languagePercent: (name, formattedPercent) => `${name}, ${formattedPercent}`,
       footer: 'Creado con Git-to-Portfolio · Datos de la API de GitHub',
     },
     repositories: {
@@ -566,6 +592,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       emptyDescription: 'No se encontraron repositorios públicos para este usuario.',
       projectsLabel: 'Proyectos',
       title: 'Repositorios destacados',
+      pinnedTitle: 'Repositorios fijados',
       projectCount: (count) => `${count} PROYECTOS`,
       missingDescription: 'No hay una descripción disponible para este proyecto.',
       stars: 'Estrellas',

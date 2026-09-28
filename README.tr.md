@@ -13,13 +13,17 @@ Hemen deneyebileceğiniz gerçek portföyler:
 
 ## Özellikler
 
+- Maviplan kimliği: saç teli kenarlıklı paftalar, titleblock şeritleri, spec tabloları, 2px keskin köşeler; gradyan, parlama ve sürekli hareket yok
+- Varsayılan olarak derin lacivert gece teması, kâğıt beyazı ters çevirimi ve header'da geçiş düğmesi; seçim çerezde tutulur ve sunucuda uygulanır
 - Avatar, bio, konum, sosyal linkler ve takipçi/repo sayılarıyla birlikte herkese açık profil
-- Fork ve arşivlenmiş depolar hariç, altı öne çıkan repo
-- Öne çıkan repo dillerinin repo sayısına göre dağılımı
+- Önce kullanıcının profiline sabitlediği repolar; token yoksa veya sabitlenmiş repo yoksa yıldıza göre sıralamaya düşer
+- Repo sayısına göre hesaplanan ve okuyucunun diline göre yazılan öne çıkan dil dağılımı
+- Her proje hücresinde mono yazıyla etiketlenmiş repo konuları
 - Sunucu tarafında çözümlenen Türkçe, İngilizce, Almanca ve İspanyolca arayüz
+- Yerine durduğu projelerin çizimini taklit eden, akış tabanlı repo bloğu yükleme iskeleti
 - Tek tıkla **PDF olarak kaydet** çıktısı veren, yazdırmaya optimize edilmiş stil dosyası
 - Erişilebilir pano yedeğiyle birlikte yerel Web Share desteği
-- Profil ve dil başına üretilen, lokalize Open Graph ve Twitter kart görselleri
+- Profil ve dil başına üretilen, maviplan kartı olarak çizilen lokalize Open Graph ve Twitter görselleri
 - Dil başına lokalize başlık, açıklama, anahtar kelimeler, hreflang kümesi ve JSON-LD yapılandırılmış verisi
 - Yüklenebilir web uygulaması meta verisi
 - Bir saatlik GitHub API yeniden doğrulama
@@ -43,7 +47,9 @@ npm run dev
 
 Bir GitHub kullanıcı adı, `@kullanıcı` biçimi veya tam `https://github.com/kullanici` adresi yazın. Girdi doğrulanır, küçük harfe çevrilir ve kodlanarak yönlendirme yapılır.
 
-Fork ve arşivlenmiş depolar çıkarıldıktan sonra yıldıza göre sıralanan ilk altı repo gösterilir. Dil barları, bu altı reponun kaç tanesinin her bir dili kullandığını sayar — kod satırı veya bayt ölçümü değildir. İlk üç dil gösterildiğinden yüzdelerin toplamı 100 etmeyebilir.
+Altı repo gösterilir; fork ve arşivlenmiş depolar elenir. **Önce kullanıcının GitHub profiline sabitlediği repolar gelir**, seçtikleri sırayla; bu liste boş olduğunda — `GITHUB_TOKEN` yok ya da hiçbir şey sabitlenmemiş — sayfa yıldıza göre sıralanan en çok yıldızlı repolara düşer. Bölüm başlığı bunlardan hangisinin görüntülendiğini söyler, çünkü kullanıcının seçtiği bir liste ile bizim sıraladığımız bir liste aynı iddia değildir.
+
+Dil barları, bu altı reponun kaç tanesinin her bir dili kullandığını sayar — kod satırı veya bayt ölçümü değildir. İlk üç dil gösterildiğinden yüzdelerin toplamı 100 etmeyebilir. Her pay `Intl` ile sayfanın diline göre yazılır: İngilizcede `60%`, Türkçede `%60`, Almanca ve İspanyolcada `60 %`.
 
 ## Diller
 
@@ -68,6 +74,8 @@ SITE_URL=https://git-to-portfolio.vercel.app
 GITHUB_REPO_URL=https://github.com/Kcguner/git-to-portfolio
 
 # İsteğe bağlı, ancak herkese açık bir dağıtım için güçlü şekilde önerilir.
+# Sabitlenmiş repo listesini de bu açar; token olmadan sayfa yıldız
+# sıralamasına düşer.
 GITHUB_TOKEN=github_pat_...
 ```
 
@@ -78,16 +86,17 @@ GITHUB_TOKEN=github_pat_...
 ## Nasıl Çalışır
 
 1. `GET /users/:username` herkese açık profili yükler.
-2. `GET /users/:username/repos` depoları yükler; fork ve arşivlenmiş kayıtlar elenir, sonuç yerelde yıldıza göre sıralanır.
-3. Her iki yanıt bir saat önbelleklenir. Dil çerezde değil, URL'de taşınır.
+2. GraphQL `pinnedItems` kullanıcının seçtiği depoları seçtikleri sırayla yükler. Bu istek `GITHUB_TOKEN` gerektirir — GraphQL API'nin anonim kotası yoktur — ve herhangi bir hatada `null` döndürür, bu yüzden token yoksa bu adım atlanır.
+3. `GET /users/:username/repos` yedek yoldur; fork ve arşivlenmiş kayıtlar elenir, sonuç yerelde yıldıza göre sıralanır.
+4. Her iki yanıt bir saat önbelleklenir. Dil çerezde değil, URL'de taşınır.
 
-Depolar için Search API yerine core API kullanılır. Anonim arama, bazı herkese açık hesapları hiç yanıt vermeden `422 Validation Failed` ile reddediyor ve bu da geçerli bir profili reposu boş göstermek anlamına geliyor; ayrıca arama API'si saatte 60 olan core API'ye kıyasla dakikada 10 istekle sınırlıdır. Bunun bedeli sıralama kapsamıdır: core API yıldıza göre sıralayamaz, bu yüzden altı kart, kullanıcının en son push edilmiş 100 reposu içindeki en yıldızlılardır ve hesapların büyük çoğunluğu için bu tam olarak doğrudur. Bu pencereyi genişletmek için `lib/github.ts` içindeki `DEFAULT_REPO_PAGES` değerini artırın.
+Yedek sıralama için Search API yerine core API kullanılır. Anonim arama, bazı herkese açık hesapları hiç yanıt vermeden `422 Validation Failed` ile reddediyor ve bu da geçerli bir profili reposu boş göstermek anlamına geliyor; ayrıca arama API'si saatte 60 olan core API'ye kıyasla dakikada 10 istekle sınırlıdır. Bunun bedeli sıralama kapsamıdır: core API yıldıza göre sıralayamaz, bu yüzden altı kart, kullanıcının en son push edilmiş 100 reposu içindeki en yıldızlılardır ve hesapların büyük çoğunluğu için bu tam olarak doğrudur. Bu pencereyi genişletmek için `lib/github.ts` içindeki `DEFAULT_REPO_PAGES` değerini artırın.
 
 ## Paylaşım ve Yazdırma
 
 **Paylaşım** aksiyonu, mümkün olan yerde yerel Web Share API'sini kullanır, yoksa Pano API'sine düşer ve sonucu canlı bir bölgeyle duyurur. Mesaj kendiliğinden kapanır, kurtarma talimatı içeriyorsa daha uzun kalır ve her zaman elle kapatılabilir.
 
-**Yazdır / PDF'ye kaydet** aksiyonu tarayıcının yazdırma penceresini açar. Yazdırma stil dosyası gezinme ve kontrolleri gizler, dil barlarını tarayıcıların arka plan gradyanlarını kaldırması nedeniyle düz griye çevirir ve açık koyu renkli metni okunabilir koyu renge zorlar; böylece repo adları beyaz üstüne beyaz yazdırılmaz.
+**Yazdır / PDF'ye kaydet** aksiyonu tarayıcının yazdırma penceresini açar. Yazdırma stil dosyası gezinme ve kontrolleri gizler, dil barlarını yazıcının kaybedememesi için düz griye yeniden boyar ve açık koyu renkli metni okunabilir koyu renge zorlar; böylece repo adları beyaz üstüne beyaz yazdırılmaz.
 
 ## Arama Motorları ve Paylaşım
 
@@ -134,7 +143,8 @@ Next.js 16 App Router · React 19 · Tailwind CSS 3 · GitHub REST API · Vitest
 
 ## Bilinen Sınırlamalar
 
-- **Yükleme iskeleti yok.** Bir `loading.tsx` akış tabanlı render'ı etkinleştirir ve Next.js, başlıklar gönderildiği için akış tabanlı yanıtlarda `200` döner. Bilinmeyen bir kullanıcı adı o zaman yalnızca iskeletle `200` yanıtı verirdi; arama motorları bunu soft 404 sayar. Doğru durum kodu, yükleme animasyonundan önce gelir.
+- **Proje listesi ve yapılandırılmış verisi akışla geliyor.** Bilinmeyen bir kullanıcı adı `404`, kanonik olmayan bir giriş adı `308` yanıtlıyor; çünkü ikisi de yanıt gövdesi başlamadan karar veriliyor. Bu da repoya bakışın kendi `<Suspense>` sınırının arkasında çalışması demek. Kişi, header ve footer ilk pakette; altı repo, öne çıkan diller ve bunları anlatan `ProfilePage` veri bloğu son pakette geliyor. JavaScript çalıştıran bir tarayıcı bitmiş paftayı görüyor; ilk pakette duran bir istemci ise projeler olmadan kişiyi görüyor.
+- **Tema üçüncü bir durum değil.** Geçiş düğmesi yalnızca gece (varsayılan) ve kâğıt sunuyor. "Sistem" modu yok ve ilk ziyaret tarayıcı açık isteyse bile gece paletini çiziyor.
 - **Önbellek olarak yalnızca rate limit var.** API rotası ve ek bir önbellek katmanı yok. Token, herkese açık bir dağıtımı ayakta tutan şeydir.
 - **404 gövdesi istemcide hydrate ediliyor.** Durum, lokalize `<title>` ve `noindex` meta verisi ilk HTML'de doğru, ancak görünür işaretleme RSC payload'ı üzerinden geliyor; çünkü `notFound()` `NEXT_HTTP_ERROR_FALLBACK;404` fırlatarak çalışıyor.
 - **Çevrimdışı destek yok.** Web uygulaması manifesti yüklenebilirlik meta verisi sağlıyor, ancak çevrimdışı kullanım için hiçbir şey önbelleklenmiyor.

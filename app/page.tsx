@@ -71,29 +71,29 @@ export async function generateMetadata({ searchParams }: HomePageProps): Promise
 function StepIcon({ icon }: { icon: (typeof STEP_ICONS)[number] }) {
   if (icon === 'user') {
     return (
-      <svg className="h-6 w-6 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
+      <svg className="h-5 w-5 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="3.5" />
+        <path d="M5 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1" />
       </svg>
     );
   }
 
   if (icon === 'image') {
     return (
-      <svg className="h-6 w-6 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-        <circle cx="8.5" cy="8.5" r="1.5" />
-        <polyline points="21 15 16 10 5 21" />
+      <svg className="h-5 w-5 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" />
+        <path d="M3 16l5-5 4 4 3-3 6 6" />
+        <circle cx="8.5" cy="9" r="1.25" />
       </svg>
     );
   }
 
   return (
-    <svg className="h-6 w-6 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="12" y1="18" x2="12" y2="12" />
-      <line x1="9" y1="15" x2="15" y2="15" />
+    <svg className="h-5 w-5 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 3h8l4 4v14H6z" />
+      <polyline points="14 3 14 7 18 7" />
+      <line x1="9" y1="12" x2="15" y2="12" />
+      <line x1="9" y1="16" x2="13" y2="16" />
     </svg>
   );
 }
@@ -107,151 +107,206 @@ function ArrowIcon() {
   );
 }
 
+/**
+ * A cell reference, e.g. `S.01` for the first step of sheet S.
+ *
+ * "S" is the steps section and the numbering is notation, not a word, so it
+ * stays the same in every language.
+ */
+function formatStepCode(index: number): string {
+  return `S.${String(index + 1).padStart(2, '0')}`;
+}
+
 export default async function HomePage({ searchParams }: HomePageProps) {
   const locale = getLocale(await searchParams);
   const dictionary = getDictionary(locale);
   const githubRepoUrl = getGitHubRepoUrl();
+  const stepCount = String(dictionary.home.steps.length).padStart(2, '0');
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative flex min-h-screen flex-col">
       <SiteHeader locale={locale} />
 
       {/* The three steps rendered below, as structured data. */}
       <JsonLd data={getHowToJsonLd(locale)} />
 
-      <main className="relative overflow-hidden">
-        <div className="orb orb-1" aria-hidden="true" />
-        <div className="orb orb-2" aria-hidden="true" />
+      <main className="relative flex-1">
+        {/*
+          Hero: the title block of the drawing. The kicker, the name at poster
+          size, one line of plain text and the field that starts the work -
+          no decoration around it, because the type is the decoration.
+        */}
+        <section className="mx-auto w-full max-w-6xl px-4 pt-12 sm:px-6 sm:pt-14 md:pt-20">
+          <div className="mx-auto w-full min-w-0 max-w-3xl">
+            {/* The version stamp, restyled from a pill into a drawn kicker. */}
+            <p className="section-label max-w-full text-[10px] tracking-[0.12em] sm:text-[11px] sm:tracking-[0.15em]">
+              {dictionary.home.badge}
+            </p>
 
-        <section className="mx-auto w-full max-w-6xl px-6 pb-24 pt-20 md:pb-32 md:pt-32">
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="tag mb-8 inline-flex animate-fade-in items-center gap-2 rounded-full px-3 py-1.5">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true" />
-              <span>{dictionary.home.badge}</span>
-            </div>
-
-            <h1 className="gradient-text mb-6 animate-slide-up text-4xl font-bold tracking-tight sm:text-5xl md:text-7xl">
-              Git-to-Portfolio
+            {/*
+              The product name is set on two lines at drawing scale. The split
+              is a line break, not two words, so the heading keeps the whole
+              name as its accessible name.
+            */}
+            <h1
+              aria-label="Git-to-Portfolio"
+              // Poster scale starts one step lower: "PORTFOLIO" at text-5xl
+              // overflows a 320px sheet, and uppercase black has no second
+              // line to break onto.
+              className="gradient-text mt-6 font-sans text-[clamp(2rem,11vw,2.25rem)] font-black uppercase leading-[0.95] tracking-tight sm:text-6xl md:text-8xl"
+            >
+              <span aria-hidden="true" className="block">Git-to-</span>
+              {/*
+                The second line is drawn as an outline, the way a title is
+                lettered on a drawing. Two guards: where the stroke is not
+                supported the word stays solid ink rather than invisible, and
+                print drops the stroke because it forces solid text — a 2px
+                stroke over a filled glyph would print as a blob.
+              */}
+              <span
+                aria-hidden="true"
+                className="block [-webkit-text-stroke:2px_rgb(var(--color-text-primary))] supports-[-webkit-text-stroke:1px_black]:text-transparent print:[-webkit-text-stroke-width:0]"
+              >
+                Portfolio
+              </span>
             </h1>
 
-            <p className="mx-auto mb-12 max-w-2xl animate-slide-up stagger-1 text-lg leading-relaxed text-text-secondary md:text-xl">
+            <p className="mt-8 max-w-2xl text-base leading-relaxed text-text-secondary md:text-lg">
               {dictionary.home.heroBefore}
-              <span className="font-medium text-text-primary">{dictionary.home.heroHighlight}</span>
+              <span className="font-semibold text-text-primary">{dictionary.home.heroHighlight}</span>
               {dictionary.home.heroAfter}
             </p>
 
-            <div className="animate-slide-up stagger-2">
+            <div className="mt-10">
               <SearchForm locale={locale} />
             </div>
           </div>
         </section>
 
-        <div className="mx-auto w-full max-w-6xl px-6">
+        <div className="mx-auto mt-16 w-full max-w-6xl px-6 md:mt-24">
           <div className="divider-gradient" />
         </div>
 
-        <section id="nasil-calisir" className="mx-auto w-full max-w-6xl scroll-mt-24 px-6 py-20 md:py-28">
-          <div className="mb-16 text-center">
-            <span className="section-label">{dictionary.home.howLabel}</span>
-            <h2 className="gradient-text mb-4 mt-4 text-3xl font-bold tracking-tight md:text-4xl">
-              {dictionary.home.howTitle}
-            </h2>
-            <p className="mx-auto max-w-xl text-text-secondary">{dictionary.home.howDescription}</p>
-          </div>
+        {/* Detail A: how the sheet is produced, as three cells. */}
+        <section id="nasil-calisir" className="mx-auto w-full max-w-6xl scroll-mt-24 px-6 py-14 md:py-20">
+          <div className="card-premium">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3 md:px-8">
+              <span className="section-label">{dictionary.home.howLabel}</span>
+              <span className="tag bg-accent px-2 py-1 text-background">{stepCount}</span>
+            </div>
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-            {dictionary.home.steps.map((step, index) => (
-              <article
-                key={index + 1}
-                className={`card-premium animate-slide-up rounded-2xl p-8 stagger-${index + 1}${index === 1 ? ' featured-card' : ''}`}
-              >
-                <div className="mb-6 flex items-start justify-between">
-                  <div className="step-number flex h-12 w-12 items-center justify-center rounded-xl">
-                    <span className="font-mono text-lg font-bold text-accent">{String(index + 1).padStart(2, '0')}</span>
-                  </div>
-                  <StepIcon icon={STEP_ICONS[index]} />
-                </div>
-                <h3 className="mb-3 text-xl font-semibold tracking-tight text-text-primary">{step.title}</h3>
-                <p className="leading-relaxed text-text-secondary">{step.text}</p>
-              </article>
-            ))}
+            <div className="px-5 py-8 md:px-8 md:py-10">
+              {/* `font-sans` is explicit: globals.css still sets a serif on
+                  every heading, and this sheet is drawn in the grotesk. */}
+              <h2 className="gradient-text font-sans text-3xl font-black tracking-tight md:text-4xl">
+                {dictionary.home.howTitle}
+              </h2>
+              <p className="mt-3 max-w-2xl leading-relaxed text-text-secondary">
+                {dictionary.home.howDescription}
+              </p>
+
+              <ol className="mt-8 grid grid-cols-1 border-l border-t border-border min-[900px]:grid-cols-3">
+                {dictionary.home.steps.map((step, index) => (
+                  <li
+                    key={index + 1}
+                    className="border-b border-r border-border p-6 md:p-8"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="font-mono text-[11px] tracking-[0.14em] text-accent">
+                        {formatStepCode(index)}
+                      </span>
+                      <StepIcon icon={STEP_ICONS[index]} />
+                    </div>
+                    <h3 className="mt-6 font-sans text-lg font-black tracking-tight text-text-primary">
+                      {step.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                      {step.text}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </div>
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-6xl px-6 pb-20 md:pb-28">
-          <div className="card-premium rounded-2xl p-8 md:p-12">
-            <div className="mb-8 flex flex-col justify-between gap-6 md:flex-row md:items-end">
+        {/* Detail B: finished sheets, as a list of cells. */}
+        <section className="mx-auto w-full max-w-6xl px-6 pb-20 md:pb-24">
+          <div className="card-premium">
+            <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border px-5 py-4 md:px-8">
               <div>
                 <span className="section-label">{dictionary.home.tryLabel}</span>
-                <h2 className="gradient-text mt-3 text-2xl font-bold tracking-tight md:text-3xl">
+                <h2 className="gradient-text mt-2 font-sans text-2xl font-black tracking-tight md:text-3xl">
                   {dictionary.home.profilesTitle}
                 </h2>
-                <p className="mt-2 text-text-secondary">{dictionary.home.profilesDescription}</p>
               </div>
-              <div className="flex items-center gap-2 text-sm text-text-muted">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden="true" />
-                <span>{dictionary.home.liveExamples}</span>
-              </div>
+              <span className="tag px-2 py-1">{dictionary.home.liveExamples}</span>
             </div>
 
-            {/* Two cards in a max-w-6xl panel would sit far apart, so the row is
-                capped and centred to keep the cards at a readable width. */}
-            <div className="mx-auto grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
-              {EXAMPLES.map((example) => (
-                <Link
-                  prefetch={false}
-                  key={example.username}
-                  href={withLocale(getProfilePathname(example.username), locale)}
-                  className="pill-btn group flex items-center justify-between rounded-xl px-6 py-5"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-accent/20 bg-gradient-to-br from-accent/20 to-accent/5 font-mono text-sm font-bold text-accent">
-                      {example.initials}
-                    </div>
-                    <div>
-                      <div className="font-mono font-medium text-text-primary transition-colors group-hover:text-accent">
-                        /{example.username}
-                      </div>
-                      <div className="mt-0.5 text-xs text-text-muted">
-                        {dictionary.home.exampleDescriptions[example.descriptionKey]}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-text-muted transition-all duration-300 group-hover:translate-x-1 group-hover:text-accent">
-                    <ArrowIcon />
-                  </span>
-                </Link>
-              ))}
+            <div className="px-5 py-6 md:px-8 md:py-8">
+              <p className="text-text-secondary">{dictionary.home.profilesDescription}</p>
+
+              {/* Two cells in a max-w-6xl panel would sit far apart, so the row is
+                  capped and centred to keep them at a readable width. */}
+              <ul className="mx-auto mt-6 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+                {EXAMPLES.map((example) => (
+                  <li key={example.username}>
+                    <Link
+                      prefetch={false}
+                      href={withLocale(getProfilePathname(example.username), locale)}
+                      className="pill-btn group flex items-center justify-between gap-4 px-4 py-4"
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        {/* The initials are a stamped square, not a medallion. */}
+                        <span
+                          aria-hidden="true"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center border border-border font-mono text-xs font-bold text-accent"
+                        >
+                          {example.initials}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-mono text-sm text-text-primary transition-colors group-hover:text-accent">
+                            /{example.username}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-text-muted">
+                            {dictionary.home.exampleDescriptions[example.descriptionKey]}
+                          </span>
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-text-muted transition-colors group-hover:text-accent">
+                        <ArrowIcon />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-border/50">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-6 py-10 sm:flex-row">
-          <div className="flex items-center gap-3">
-            <div className="logo-mark flex h-6 w-6 items-center justify-center rounded-md">
-              <svg className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
-              </svg>
-            </div>
-            <span className="text-sm text-text-muted">{dictionary.home.copyright(new Date().getFullYear())}</span>
-          </div>
-          <div className="flex items-center gap-6 text-sm text-text-muted">
+      {/* Titleblock strip: the same hairline strip every drawing ends with. */}
+      <footer className="mx-auto w-full max-w-6xl px-6 pb-10">
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-border px-5 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">
+          <span>{dictionary.home.copyright(new Date().getFullYear())}</span>
+          <nav className="flex flex-wrap items-center gap-4">
             {githubRepoUrl && (
-              <a href={githubRepoUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-text-primary">
+              <a href={githubRepoUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-accent">
                 GitHub
               </a>
             )}
-            <Link href={`${withLocale('/', locale)}#nasil-calisir`} className="transition-colors hover:text-text-primary">
+            <Link
+              href={`${withLocale('/', locale)}#nasil-calisir`}
+              className="transition-colors hover:text-accent"
+            >
               {dictionary.home.howLink}
             </Link>
             {githubRepoUrl && (
-              <a href={githubRepoUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-text-primary">
+              <a href={githubRepoUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-accent">
                 {dictionary.home.source}
               </a>
             )}
-          </div>
+          </nav>
         </div>
       </footer>
     </div>

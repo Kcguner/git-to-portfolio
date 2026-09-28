@@ -127,7 +127,11 @@ describe('dictionaries', () => {
       const dictionary = getDictionary(locale);
       expect(dictionary).toBe(dictionaries[locale]);
       expect(dictionary.localeSwitcher.label).toBeTruthy();
+      expect(dictionary.theme.label).toBeTruthy();
+      expect(dictionary.theme.toNight).toBeTruthy();
+      expect(dictionary.theme.toPaper).toBeTruthy();
       expect(dictionary.search.inputLabel).toBeTruthy();
+      expect(dictionary.profile.profileLoading).toBeTruthy();
       expect(dictionary.home.steps).toHaveLength(3);
       expect(dictionary.print.label).toBeTruthy();
       expect(dictionary.metadata.portfolioTitle('Ada')).toContain('Ada');
@@ -162,6 +166,18 @@ describe('dictionaries', () => {
       );
 
       expect(new Set(rendered).size).toBe(LOCALES.length);
+    }
+  });
+
+  it('joins a language name with an already localized percentage', () => {
+    // The percentage itself is formatted by Intl, so every locale is asked to
+    // do the same thing: keep the name and put the value next to it.
+    for (const locale of LOCALES) {
+      const { languagePercent } = getDictionary(locale).profile;
+      const label = languagePercent('TypeScript', '60%');
+
+      expect(label).toContain('TypeScript');
+      expect(label).toContain('60%');
     }
   });
 

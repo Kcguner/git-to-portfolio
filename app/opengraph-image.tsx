@@ -20,6 +20,20 @@ export function generateImageMetadata() {
   }));
 }
 
+/*
+ * The card is drawn in the same identity as the site: night navy, off-white
+ * ink, one signal-yellow rule and a mono label. Satori only accepts inline
+ * styles, so the palette is spelled out here instead of coming from the CSS
+ * tokens - these are the only hex values the site ships, and they are the
+ * night theme's tokens, not a separate design.
+ */
+const INK = "#E8EEF4";
+const MUTED = "#A9BCD0";
+const ACCENT = "#FFD400";
+const BACKGROUND = "#0A1628";
+const SURFACE = "#0D1C33";
+const BORDER = "#2A3B55";
+
 export default async function OpenGraphImage({
   id,
 }: {
@@ -37,77 +51,74 @@ export default async function OpenGraphImage({
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          padding: "72px 80px",
-          backgroundColor: "#0a0a0c",
-          color: "#f4f4f5",
-          fontFamily: "sans-serif",
+          padding: "64px 72px",
+          backgroundColor: BACKGROUND,
+          color: INK,
+          fontFamily: "monospace",
         }}
       >
+        {/* Titleblock head: the drawing's own reference, in accent. */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderBottom: `2px solid ${BORDER}`,
+            paddingBottom: 20,
+            color: ACCENT,
+            fontSize: 22,
+            letterSpacing: 4,
+          }}
+        >
+          <span>{SITE_NAME}</span>
+          <span style={{ color: MUTED }}>{ogImage.badge}</span>
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              color: "#6ee7b7",
-              fontSize: 24,
-              fontWeight: 700,
-              letterSpacing: 2,
-            }}
-          >
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 9,
-                backgroundColor: "#10b981",
-                color: "#052e2b",
-                fontSize: 22,
-                fontWeight: 800,
-              }}
-            >
-              {"</>"}
-            </div>
-            <span>{SITE_NAME}</span>
-          </div>
-          <div
-            style={{
-              maxWidth: 920,
-              marginTop: 54,
-              fontSize: 76,
+              maxWidth: 980,
+              marginTop: 46,
+              color: INK,
+              fontSize: 82,
               fontWeight: 800,
-              lineHeight: 1.08,
+              lineHeight: 1.04,
+              letterSpacing: -2,
             }}
           >
             {ogImage.headline}
           </div>
+          {/* A drawn rule in the accent, not a gradient fill. */}
+          <div style={{ width: 120, height: 8, marginTop: 34, backgroundColor: ACCENT }} />
           <div
             style={{
-              maxWidth: 760,
-              marginTop: 26,
-              color: "#a1a1aa",
+              maxWidth: 820,
+              marginTop: 30,
+              color: MUTED,
               fontSize: 28,
-              lineHeight: 1.4,
+              lineHeight: 1.45,
             }}
           >
             {ogImage.subtitle}
           </div>
         </div>
 
+        {/* Titleblock foot: the sheet number and the copyright line. */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            color: "#a1a1aa",
-            fontSize: 21,
+            borderTop: `2px solid ${BORDER}`,
+            paddingTop: 20,
+            backgroundColor: SURFACE,
+            color: MUTED,
+            fontSize: 20,
+            letterSpacing: 2,
           }}
         >
           <span>{ogImage.footer}</span>
-          <span style={{ color: "#10b981" }}>{ogImage.badge}</span>
+          <span style={{ color: ACCENT }}>{locale.toUpperCase()}</span>
         </div>
       </div>
     ),

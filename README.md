@@ -13,13 +13,17 @@ Real portfolios you can try right now:
 
 ## Features
 
+- Blueprint identity: hairline-bordered sheets, titleblock strips, spec tables, sharp 2px corners, no gradients, no glow, no infinite motion
+- Deep-navy night theme by default with a paper-light inversion and a header toggle; the choice is remembered in a cookie and applied server-side
 - Public profile with avatar, bio, location, social links and follower/repo counts
-- Six featured repositories, forks and archived repos excluded
-- Featured-language distribution, counted by repository
+- Pinned repositories first, falling back to the starred ranking when there is no token or nothing is pinned
+- Featured-language distribution, counted by repository and formatted for the reader's language
+- Repository topics as mono annotation chips on each project cell
 - Turkish, English, German and Spanish, resolved on the server
+- Streamed loading skeleton for the repository block, shaped like the projects it stands in for
 - Print-optimized stylesheet with a one-click **Save as PDF** export
 - Native Web Share with an accessible clipboard fallback
-- Localized Open Graph and Twitter card images, one static image per language and per profile
+- Localized Open Graph and Twitter card images, one static image per language and per profile, drawn as blueprint cards
 - Per-language titles, descriptions, keywords, hreflang clusters and JSON-LD structured data
 - Installable web app metadata
 - One-hour GitHub API revalidation
@@ -43,7 +47,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Type a GitHub username, an `@handle`, or a full `https://github.com/username` URL. The input is validated, lowercased and encoded before it navigates.
 
-The first six non-fork, non-archived repositories are shown, ranked by stars. The language bars count how many of those six repositories use each language — they are not a measurement of lines or bytes of code, and the top three are shown, so the percentages do not necessarily add up to 100.
+Six repositories are shown, forks and archived repos excluded. **The repositories the person pinned on their GitHub profile come first**, in the order they chose; only when that list is empty — no `GITHUB_TOKEN`, or nothing pinned — does the page fall back to the most-starred non-fork repositories from the core API. The section heading names which of the two you are looking at, because a list someone chose and a list we ranked are not the same claim.
+
+The language bars count how many of those six repositories use each language — they are not a measurement of lines or bytes of code, and the top three are shown, so the percentages do not necessarily add up to 100. Each share is formatted with `Intl` for the page's language: `60%` in English, `%60` in Turkish, `60 %` in German and Spanish.
 
 ## Languages
 
@@ -68,6 +74,8 @@ SITE_URL=https://git-to-portfolio.vercel.app
 GITHUB_REPO_URL=https://github.com/Kcguner/git-to-portfolio
 
 # Optional, but strongly recommended for any public deployment.
+# Also what enables the pinned-repositories list; without it the page falls
+# back to the starred ranking.
 GITHUB_TOKEN=github_pat_...
 ```
 
@@ -78,16 +86,17 @@ All three are read on the server only and are never sent to the browser, so none
 ## How It Works
 
 1. `GET /users/:username` loads the public profile.
-2. `GET /users/:username/repos` loads the repositories, forks and archived entries filtered out, ranked locally by stars.
-3. Both responses are cached for one hour. The language is carried in the URL, not in a cookie.
+2. GraphQL `pinnedItems` loads the repositories the person chose, in their order. It needs `GITHUB_TOKEN` — the GraphQL API has no anonymous quota — and answers `null` for any failure, so this step is skipped without a token.
+3. `GET /users/:username/repos` is the fallback: forks and archived entries filtered out, ranked locally by stars.
+4. Both responses are cached for one hour. The language is carried in the URL, not in a cookie.
 
-The core API is used for repositories rather than the Search API. Unauthenticated search rejects some public accounts outright with `422 Validation Failed`, which would render a valid profile with no repositories at all, and it is rate limited at 10 requests per minute against the core API's 60 per hour. The trade-off is ranking scope: the core API cannot sort by stars, so the six cards are the most-starred of the user's 100 most recently pushed repositories, which is exact for the large majority of accounts. Raise `DEFAULT_REPO_PAGES` in `lib/github.ts` to widen that window.
+The core API is used for the fallback ranking rather than the Search API. Unauthenticated search rejects some public accounts outright with `422 Validation Failed`, which would render a valid profile with no repositories at all, and it is rate limited at 10 requests per minute against the core API's 60 per hour. The trade-off is ranking scope: the core API cannot sort by stars, so the six cards are the most-starred of the user's 100 most recently pushed repositories, which is exact for the large majority of accounts. Raise `DEFAULT_REPO_PAGES` in `lib/github.ts` to widen that window.
 
 ## Share and Print
 
 The **Share** action uses the native Web Share API where available and falls back to the Clipboard API, announcing the result in a live region. The message clears itself, lingers longer when it carries a recovery instruction, and can always be dismissed by hand.
 
-The **Print / Save as PDF** action opens the browser print dialog. The print stylesheet drops navigation and controls, converts the language bars to flat greys because browsers strip background gradients, and forces near-white text to a readable dark colour so repository names do not print as white-on-white.
+The **Print / Save as PDF** action opens the browser print dialog. The print stylesheet drops navigation and controls, repaints the language bars as flat greys so a printer cannot lose them, and forces near-white text to a readable dark colour so repository names do not print as white-on-white.
 
 ## Search and Sharing
 
@@ -134,7 +143,8 @@ Next.js 16 App Router · React 19 · Tailwind CSS 3 · GitHub REST API · Vitest
 
 ## Known Limitations
 
-- **No loading skeleton.** A `loading.tsx` enables streamed rendering, and Next.js returns `200` for streamed responses because the headers are already sent. An unknown username would then answer `200` with only a skeleton, which crawlers treat as a soft 404. Correct status codes win over a loading animation.
+- **The project list is streamed, and so is its structured data.** An unknown username answers `404` and a non-canonical login answers `308` because both are decided before the response body starts, which means the repository lookup runs behind a `<Suspense>` boundary of its own. The person, the header and the footer are in the first chunk, with a skeleton in the space the projects will take; the six repositories, the featured languages and the `ProfilePage` data block describing them arrive in the last. A crawler that renders JavaScript sees the finished sheet; a client that stops at the first chunk sees the person without the project list.
+- **The theme is not a third state.** The toggle only offers night (the default) and paper. There is no "system" mode, and the first visit always renders the night palette even when the browser asks for light.
 - **Rate limiting is the only cache.** There is no API route and no additional caching layer. A token is what keeps a public deployment responsive.
 - **The 404 body is hydrated.** The status, the localized `<title>` and the `noindex` metadata are all correct in the initial HTML, but the visible markup arrives through the RSC payload, because `notFound()` works by throwing `NEXT_HTTP_ERROR_FALLBACK;404`.
 - **No offline support.** The web app manifest provides installable metadata, but nothing is cached for offline use.

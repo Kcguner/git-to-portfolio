@@ -8,7 +8,6 @@ type ShareStatus = 'idle' | 'copied' | 'shared' | 'copy-error' | 'share-error';
 type ShareButtonProps = {
   locale: Locale;
   title: string;
-  text: string;
   url: string;
 };
 
@@ -34,7 +33,7 @@ function isErrorStatus(status: ShareStatus): boolean {
   return status === 'copy-error' || status === 'share-error';
 }
 
-export default function ShareButton({ locale, title, text, url }: ShareButtonProps) {
+export default function ShareButton({ locale, title, url }: ShareButtonProps) {
   const share = getDictionary(locale).share;
   const [status, setStatus] = useState<ShareStatus>('idle');
   const [isPending, setIsPending] = useState(false);
@@ -75,9 +74,15 @@ export default function ShareButton({ locale, title, text, url }: ShareButtonPro
     setStatus('idle');
     setIsPending(true);
 
+    // The payload is title + URL only, deliberately without `text`. Share
+    // targets concatenate the fields themselves (`url`, then `text`), so any
+    // description would land inside the pasted result and break the link -
+    // exactly what the bio did ("VIBE CODER" glued onto the URL). The URL
+    // field alone always arrives as one intact line; the title still names
+    // the sheet in targets that show it.
     try {
       if (hasNativeShare) {
-        await navigator.share({ title, text, url });
+        await navigator.share({ title, url });
         setStatus('shared');
         scheduleDismiss('shared');
         return;
@@ -123,7 +128,7 @@ export default function ShareButton({ locale, title, text, url }: ShareButtonPro
         aria-label={share.label}
         aria-busy={isPending}
         disabled={isPending}
-        className="no-print inline-flex items-center gap-2 rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm font-semibold text-text-primary transition-colors hover:border-border-hover disabled:cursor-wait disabled:opacity-60 sm:px-4"
+        className="no-print inline-flex h-9 shrink-0 items-center gap-2 border border-border bg-surface-elevated px-3 text-[13px] font-semibold text-text-primary transition-colors hover:border-border-hover disabled:cursor-wait disabled:opacity-60 sm:px-4"
       >
         <svg
           className="h-4 w-4"
@@ -141,7 +146,9 @@ export default function ShareButton({ locale, title, text, url }: ShareButtonPro
           <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
           <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
         </svg>
-        <span className="hidden lg:inline">{share.label}</span>
+        {/* Same rule as the print button: the word waits for `xl`, where the
+            header row has room for it on a single line. */}
+        <span className="hidden xl:inline">{share.label}</span>
       </button>
 
       {message && (
@@ -149,10 +156,10 @@ export default function ShareButton({ locale, title, text, url }: ShareButtonPro
           role={isError ? 'alert' : 'status'}
           aria-live={isError ? 'assertive' : 'polite'}
           aria-atomic="true"
-          className={`no-print fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-2xl backdrop-blur-xl ${
+          className={`no-print fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-start gap-3 border px-4 py-3 text-sm ${
             isError
               ? 'border-red-400/30 bg-red-950/95 text-red-100'
-              : 'border-accent/30 bg-surface/95 text-text-primary'
+              : 'border-accent/30 bg-surface text-text-primary'
           }`}
         >
           <svg

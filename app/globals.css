@@ -8,25 +8,75 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* The two palettes. Values are raw "R G B" triplets so Tailwind's opacity
+     modifiers keep working; the token names match tailwind.config.ts. Night
+     is the default, and it also lives on :root so the document has a
+     background before the server-rendered class lands. */
+  :root,
+  html.dark {
+    color-scheme: dark;
+
+    --color-background: 10 22 40;
+    --color-surface: 13 28 51;
+    --color-surface-elevated: 18 35 61;
+    --color-border: 42 59 85;
+    --color-border-hover: 72 92 120;
+    --color-accent: 255 212 0;
+    --color-accent-hover: 255 224 77;
+    --color-text-primary: 232 238 244;
+    --color-text-secondary: 169 188 208;
+    --color-text-muted: 126 147 171;
+  }
+
+  html.light {
+    color-scheme: light;
+
+    --color-background: 244 246 249;
+    --color-surface: 255 255 255;
+    --color-surface-elevated: 233 237 243;
+    --color-border: 201 211 224;
+    --color-border-hover: 154 169 190;
+    --color-accent: 29 78 216;
+    --color-accent-hover: 30 64 175;
+    --color-text-primary: 14 27 44;
+    --color-text-secondary: 62 84 110;
+    --color-text-muted: 95 117 145;
+  }
+
   html {
     scroll-behavior: smooth;
-    background: #0a0a0c;
+    background: rgb(var(--color-background));
   }
 
   body {
-    min-width: 320px;
-    background: #0a0a0c;
-    color: #f4f4f5;
+    min-width: 0;
+    background: rgb(var(--color-background));
+    color: rgb(var(--color-text-primary));
     font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
+  /* Headings are the display serif; the body copy stays in the sans. The
+     italic @font-face of the same family is what an accent word inside a
+     heading uses, so `font-style: italic` needs no extra stack. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: "Fraunces", Georgia, "Times New Roman", ui-serif, serif;
+    letter-spacing: -0.01em;
+  }
+
   ::selection {
-    background: rgba(16, 185, 129, 0.28);
-    color: #ecfdf5;
+    background: rgb(var(--color-accent) / 0.18);
+    color: rgb(var(--color-text-primary));
+  }
+
+  html.dark ::selection {
+    background: rgb(var(--color-accent) / 0.3);
   }
 
   *:focus-visible {
-    outline: 2px solid #10b981;
+    outline: 2px solid rgb(var(--color-accent));
     outline-offset: 3px;
   }
 
@@ -36,28 +86,34 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: #0a0a0c;
+    background: rgb(var(--color-background));
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #27272a;
-    border-radius: 999px;
+    background: rgb(var(--color-border-hover));
+    border-radius: 2px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #3f3f46;
+    background: rgb(var(--color-accent));
   }
 }
 
 @layer components {
-  /* The two fixed layers keep the page readable while preserving the quiet grid/glow. */
+  /* Paper grain. It is the only decoration on the page, so it stays at the
+     threshold of visibility. */
   .noise-bg::before {
     content: "";
     position: fixed;
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.025'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.03;
+  }
+
+  html.dark .noise-bg::before {
+    opacity: 0.02;
   }
 
   .site-shell {
@@ -66,158 +122,97 @@
     min-height: 100vh;
   }
 
-  .grid-bg {
-    background-image:
-      linear-gradient(rgba(16, 185, 129, 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(16, 185, 129, 0.035) 1px, transparent 1px);
-    background-size: 60px 60px;
-    mask-image: radial-gradient(ellipse at center, black 28%, transparent 75%);
-    -webkit-mask-image: radial-gradient(ellipse at center, black 28%, transparent 75%);
-  }
-
-  .glow-top {
-    background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16, 185, 129, 0.15), transparent);
-  }
-
-  .orb {
-    position: absolute;
-    z-index: -1;
-    border-radius: 50%;
-    filter: blur(80px);
-    opacity: 0.5;
-    pointer-events: none;
-  }
-
-  .orb-1 {
-    width: 400px;
-    height: 400px;
-    top: -100px;
-    right: -100px;
-    background: rgba(16, 185, 129, 0.15);
-  }
-
-  .orb-2 {
-    width: 300px;
-    height: 300px;
-    bottom: 10%;
-    left: -100px;
-    background: rgba(52, 211, 153, 0.08);
-  }
-
+  /* A display word is solid ink, never a gradient: the old names stay as
+     aliases so untouched pages keep working. */
   .gradient-text {
-    background: linear-gradient(135deg, #f4f4f5 0%, #a1a1aa 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: rgb(var(--color-text-primary));
   }
 
   .gradient-text-accent {
-    background: linear-gradient(135deg, #10b981 0%, #34d399 50%, #6ee7b7 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: rgb(var(--color-accent));
   }
 
+  /* Flat paper surface with a hairline edge. No blur, no glow line, no lift.
+     2px is the one radius of the blueprint identity: sharp enough to read as
+     cut paper, not as a soft card, and small enough to be invisible. Every
+     framed surface in the app takes it from here, so components must not set
+     a `rounded-*` utility of their own. */
   .card-premium {
     position: relative;
-    overflow: hidden;
-    border: 1px solid #22222a;
-    background: linear-gradient(145deg, rgba(22, 22, 28, 0.72), rgba(17, 17, 21, 0.72));
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    transition: border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s ease;
-  }
-
-  .card-premium::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.55), transparent);
-    opacity: 0;
-    transition: opacity 0.4s ease;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 2px;
+    background: rgb(var(--color-surface));
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .card-premium:hover {
-    border-color: #2e2e3a;
-    background: linear-gradient(145deg, rgba(26, 26, 33, 0.86), rgba(17, 17, 21, 0.86));
-    transform: translateY(-2px);
-    box-shadow: 0 18px 45px -28px rgba(16, 185, 129, 0.35);
-  }
-
-  .card-premium:hover::before {
-    opacity: 1;
+    border-color: rgb(var(--color-border-hover));
+    box-shadow: 0 2px 10px rgb(10 22 40 / 0.05);
   }
 
   .input-premium {
-    border: 1px solid #22222a;
-    background: rgba(17, 17, 21, 0.82);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    transition: border-color 0.3s ease, background 0.3s ease, box-shadow 0.3s ease;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 2px;
+    background: rgb(var(--color-surface));
+    color: rgb(var(--color-text-primary));
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .input-premium:hover {
-    border-color: #2e2e3a;
+    border-color: rgb(var(--color-border-hover));
   }
 
+  /* The ring replaces the focus outline, which is why `outline: none` is safe
+     here: the class selector outranks the global `*:focus-visible` rule. */
   .input-premium:focus {
-    border-color: #10b981;
-    background: rgba(17, 17, 21, 1);
+    border-color: rgb(var(--color-accent));
     outline: none;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1), 0 0 0 1px #10b981;
+    box-shadow: 0 0 0 3px rgb(var(--color-accent) / 0.12);
   }
 
+  /* Letterpress: a solid ink slab with a thick bottom edge that the press
+     leaves behind. Pressing the button pushes it into the page. */
   .btn-primary {
-    position: relative;
-    overflow: hidden;
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+    border: 0;
+    border-bottom: 3px solid rgb(var(--color-accent-hover));
+    border-radius: 2px;
+    background: rgb(var(--color-accent));
+    color: #fffdfa;
+    transition: transform 0.1s ease, background-color 0.15s ease,
+      border-color 0.15s ease;
   }
 
-  .btn-primary::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
+  /* The night accent is signal yellow, so paper white on it would fall below
+     AA; the label flips to the theme's own near-black instead. */
+  html.dark .btn-primary {
+    color: rgb(var(--color-background));
   }
 
   .btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 10px 30px -10px rgba(16, 185, 129, 0.5);
-  }
-
-  .btn-primary:hover::before {
-    opacity: 1;
+    background: rgb(var(--color-accent-hover));
   }
 
   .btn-primary:active {
-    transform: translateY(0);
+    transform: translateY(2px);
+    border-bottom-width: 1px;
   }
 
   .pill-btn {
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    background: rgba(16, 185, 129, 0.06);
-    transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 2px;
+    background: rgb(var(--color-surface));
+    color: rgb(var(--color-text-primary));
+    transition: border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .pill-btn:hover {
-    border-color: rgba(16, 185, 129, 0.4);
-    background: rgba(16, 185, 129, 0.12);
-    transform: translateY(-1px);
-  }
-
-  .pill-btn:active {
-    transform: translateY(0);
+    border-color: rgb(var(--color-border-hover));
+    background: rgb(var(--color-surface-elevated));
   }
 
   .logo-mark {
-    background: linear-gradient(135deg, #10b981, #059669);
-    box-shadow: 0 4px 20px -4px rgba(16, 185, 129, 0.4);
+    background: rgb(var(--color-accent));
+    border-radius: 2px;
   }
 
   /* Content that only makes sense on paper, such as the profile URL. */
@@ -226,32 +221,38 @@
   }
 
   .tag {
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    background: rgba(16, 185, 129, 0.1);
-    color: #6ee7b7;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 2px;
+    background: transparent;
+    color: rgb(var(--color-text-secondary));
     font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.75rem;
-    letter-spacing: 0.05em;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
 
   .section-label {
-    color: #10b981;
+    color: rgb(var(--color-accent));
     font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 0.75rem;
+    font-size: 11px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
   }
 
+  /* A flat hairline. The name is kept for the pages that still use it. */
   .divider-gradient {
     height: 1px;
-    background: linear-gradient(90deg, transparent, #22222a, transparent);
+    background: rgb(var(--color-border));
   }
 
   .step-number {
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05));
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 2px;
+    background: rgb(var(--color-surface-elevated));
   }
 
+  /* The featured step is marked with a press-red edge instead of a glowing
+     outline: a static rule, no animation. */
   .featured-card {
     position: relative;
   }
@@ -259,42 +260,27 @@
   .featured-card::after {
     content: "";
     position: absolute;
-    inset: -1px;
-    z-index: 1;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.5), transparent, rgba(16, 185, 129, 0.25));
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    animation: borderGlow 4s ease-in-out infinite;
+    inset-block: -1px;
+    inset-inline-start: -1px;
+    width: 2px;
+    background: rgb(var(--color-accent));
     pointer-events: none;
   }
 
-  @keyframes borderGlow {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 0.85; }
-  }
-
   .stat-pill {
-    border: 1px solid rgba(16, 185, 129, 0.15);
-    background: rgba(16, 185, 129, 0.05);
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 2px;
+    background: rgb(var(--color-surface));
   }
 
+  /* A square-ish portrait plate rather than a glowing medallion. Consuming
+     components must not assume the frame is round. Its radius is the same 2px
+     the portrait inside it sets, so the image never breaks the frame. */
   .profile-avatar {
-    border: 1px solid rgba(16, 185, 129, 0.3);
-    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.06), 0 14px 35px -18px rgba(16, 185, 129, 0.45);
+    border: 1px solid rgb(var(--color-border-hover));
+    border-radius: 2px;
+    box-shadow: 0 1px 3px rgb(10 22 40 / 0.08);
   }
-}
-
-/* Keep muted text at or above WCAG AA contrast on dark surfaces. */
-.text-text-muted {
-  color: #8b8b95;
-}
-
-.placeholder\:text-text-muted::placeholder {
-  color: #8b8b95;
-  opacity: 1;
 }
 
 .stagger-1 { animation-delay: 0.1s; }
@@ -312,6 +298,34 @@
 }
 
 @media print {
+  /*
+   * The token system is repointed at paper values first. Because every colour
+   * in the app resolves to rgb(var(--color-x) / <alpha-value>), this one block
+   * turns both themes — and every token-driven utility built on them — into
+   * black-on-white paper without touching a single component class.
+   *
+   * Text keeps three steps so hierarchy survives; the accent darkens to a
+   * vermilion that still reads as the accent in monochrome printing.
+   */
+  :root,
+  html.light,
+  html.dark {
+    /* Paper has no dark mode; without this the browser keeps reserving a dark
+       canvas from the night class and the print preview goes grey. */
+    color-scheme: light;
+
+    --color-background: 255 255 255;
+    --color-surface: 255 255 255;
+    --color-surface-elevated: 255 255 255;
+    --color-border: 148 148 148;
+    --color-border-hover: 90 90 90;
+    --color-accent: 140 47 25;
+    --color-accent-hover: 106 34 17;
+    --color-text-primary: 0 0 0;
+    --color-text-secondary: 51 51 51;
+    --color-text-muted: 77 77 77;
+  }
+
   /*
    * Paper geometry and type scale.
    *
@@ -397,12 +411,9 @@
     font-size: 11pt;
   }
 
+  /* Screen-only decoration: the paper grain and the featured-step edge. */
   .noise-bg::before,
-  .grid-bg,
-  .glow-top,
-  .orb,
-  .featured-card::after,
-  .card-premium::before {
+  .featured-card::after {
     display: none !important;
   }
 
@@ -412,13 +423,8 @@
 
   .logo-mark {
     background: #111111 !important;
+    color: #ffffff !important;
     box-shadow: none !important;
-  }
-
-  .gradient-text,
-  .gradient-text-accent {
-    background: none !important;
-    -webkit-text-fill-color: #111111 !important;
   }
 
   .card-premium,
@@ -427,7 +433,7 @@
   .tag {
     background: #ffffff !important;
     color: #111111 !important;
-    border-color: #d4d4d8 !important;
+    border-color: #949494 !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
   }
@@ -455,17 +461,16 @@
     -webkit-print-color-adjust: exact;
   }
 
-  /* Gradient-backed accents that would otherwise print as blank boxes. */
   .step-number {
     background: #ffffff !important;
-    border: 1px solid #d4d4d8 !important;
+    border: 1px solid #949494 !important;
     color: #111111 !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
 
   .divider-gradient {
-    background: #d4d4d8 !important;
+    background: #949494 !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
@@ -476,6 +481,7 @@
     background: #ffffff !important;
     color: #111111 !important;
     border: 1px solid #a1a1aa !important;
+    box-shadow: none !important;
   }
 
   /* Same reasoning for the search field: a dark input would print as a black
@@ -483,7 +489,7 @@
   .input-premium {
     background: #ffffff !important;
     color: #111111 !important;
-    border: 1px solid #d4d4d8 !important;
+    border: 1px solid #949494 !important;
     box-shadow: none !important;
   }
 
@@ -497,7 +503,8 @@
 
   /* The element list above misses the text colour utilities on structural
      elements (plain divs in the home page cards), which would print near-white
-     on white. Accent text keeps a readable dark teal so hierarchy survives. */
+     on white. They resolve through the print token remap, and the class rules
+     keep a hard override for anything hardcoded. */
   .text-text-primary,
   .text-text-secondary,
   .text-text-muted,
@@ -507,8 +514,9 @@
   }
 
   .text-accent,
-  .section-label {
-    color: #0f766e !important;
+  .section-label,
+  .gradient-text-accent {
+    color: #8c2f19 !important;
   }
 
   a {

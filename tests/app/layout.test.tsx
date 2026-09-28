@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const headerMocks = vi.hoisted(() => ({ headers: vi.fn() }));
+const headerMocks = vi.hoisted(() => ({
+  headers: vi.fn(),
+  cookies: vi.fn(),
+}));
 
-vi.mock("next/headers", () => ({ headers: headerMocks.headers }));
+vi.mock("next/headers", () => ({
+  headers: headerMocks.headers,
+  cookies: headerMocks.cookies,
+}));
 
-import RootLayout, { metadata as rootMetadata } from "../../app/layout";
+import RootLayout, {
+  generateViewport,
+  metadata as rootMetadata,
+} from "../../app/layout";
 import { LOCALES, LOCALE_TAGS } from "../../lib/i18n";
 
 function setLocaleHeader(value: string | null) {
@@ -13,9 +22,21 @@ function setLocaleHeader(value: string | null) {
   });
 }
 
+function setThemeCookie(value: string | null) {
+  // The shape `cookies()` resolves to is narrower than a Map: a `get` that
+  // answers with the stored cookie, and nothing else is used here.
+  headerMocks.cookies.mockResolvedValue({
+    get: (name: string) => (name === "theme" && value ? { value } : undefined),
+  });
+}
+
 async function renderLayout() {
   const { renderToStaticMarkup } = await import("react-dom/server");
   return renderToStaticMarkup(await RootLayout({ children: null }));
+}
+
+function readHtmlClass(html: string): string | undefined {
+  return html.match(/<html[^>]*class="([^"]*)"/)?.[1];
 }
 
 function readJsonLd(html: string): { '@graph': Array<Record<string, unknown>> } {
@@ -27,6 +48,9 @@ function readJsonLd(html: string): { '@graph': Array<Record<string, unknown>> } 
 describe("root layout", () => {
   beforeEach(() => {
     headerMocks.headers.mockReset();
+    headerMocks.cookies.mockReset();
+    setLocaleHeader(null);
+    setThemeCookie(null);
   });
 
   it("describes the site in the language of the request", async () => {
@@ -64,5 +88,40 @@ describe("root layout", () => {
     ]);
     expect(rootMetadata.openGraph?.images).toEqual(["/opengraph-image/tr"]);
     expect(rootMetadata.twitter?.images).toEqual(["/opengraph-image/tr"]);
+  });
+
+  it("renders the night theme by default", async () => {
+    // No cookie at all, and then a value the server does not recognise: neither
+    // may switch the palette away from the default the design is drawn for.
+    expect(readHtmlClass(await renderLayout())).toBe("dark");
+
+    setThemeCookie("neon");
+    expect(readHtmlClass(await renderLayout())).toBe("dark");
+  });
+
+  it("renders the paper theme from the theme cookie", async () => {
+    setThemeCookie("light");
+
+    expect(readHtmlClass(await renderLayout())).toBe("light");
+  });
+
+  it("keeps the html class independent of the resolved locale", async () => {
+    for (const locale of LOCALES) {
+      setLocaleHeader(locale);
+      setThemeCookie("dark");
+      const html = await renderLayout();
+
+      // The theme must not bleed into lang, or the other way round.
+      expect(html).toContain(`<html lang="${locale}" class="dark">`);
+    }
+  });
+
+  it("matches the theme-color meta tag to the theme", async () => {
+    // The viewport is resolved per request from the same cookie as the class,
+    // otherwise the browser chrome would show the wrong palette for a year.
+    expect((await generateViewport()).themeColor).toBe("#0a1628");
+
+    setThemeCookie("light");
+    expect((await generateViewport()).themeColor).toBe("#f4f6f9");
   });
 });

@@ -73,6 +73,50 @@ describe("home page", () => {
     expect(html).toContain('href="/torvalds"');
   });
 
+  it("draws the page as a title sheet with sharp cells and no motion", async () => {
+    const element = await HomePage({ searchParams: Promise.resolve({ lang: "en" }) });
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const html = renderToStaticMarkup(element);
+
+    // The name is set on two lines at poster size, and the split is a line
+    // break rather than two words: the heading keeps the whole name.
+    expect(html).toContain('<h1 aria-label="Git-to-Portfolio"');
+    expect(html).toContain('class="block">Git-to-</span>');
+    expect(html).toContain(">Portfolio</span>");
+    expect(html).toContain("font-black");
+    expect(html).toContain("uppercase");
+    // The second line is outlined, but never at the cost of legibility: the
+    // stroke is behind a `supports` guard and is dropped for print.
+    expect(html).toContain("-webkit-text-stroke:2px_rgb(var(--color-text-primary))");
+    expect(html).toContain("supports-[-webkit-text-stroke:1px_black]:text-transparent");
+    expect(html).toContain("print:[-webkit-text-stroke-width:0]");
+
+    // The steps are cells on a sheet, numbered as notation rather than as words.
+    for (const code of ["S.01", "S.02", "S.03"]) {
+      expect(html).toContain(code);
+    }
+
+    // The single radius lives in the stylesheet, and nothing on the page
+    // decorates itself or moves on its own. `gradient-text` survives as an
+    // alias for solid ink, so only real gradient utilities are looked for.
+    expect(html).not.toMatch(/rounded-(?!sm)/);
+    expect(html).not.toContain("animate-pulse");
+    expect(html).not.toContain("animate-slide-up");
+    expect(html).not.toContain("bg-gradient");
+    expect(html).not.toContain("from-accent");
+
+    // The last thing on the page is the titleblock strip, not a bare rule.
+    const footer = html.slice(html.indexOf("<footer"));
+    const home = dictionaries.en.home;
+    expect(footer).toContain("border border-border");
+    expect(footer).toContain("font-mono");
+    // The repository, the documentation and the source links all stay.
+    expect(footer).toContain("GitHub");
+    expect(footer).toContain(home.howLink);
+    expect(footer).toContain(home.source);
+    expect(footer).toContain(home.copyright(2026).replace("2026", new Date().getFullYear().toString()));
+  });
+
   it("builds localized home canonical, hreflang and social metadata", async () => {
     const metadata = await HomeMetadata({ searchParams: Promise.resolve({ lang: "de" }) });
 

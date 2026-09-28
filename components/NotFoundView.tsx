@@ -21,21 +21,36 @@ export default function NotFoundView({ locale, kind }: NotFoundViewProps) {
   const isUserNotFound = kind === 'user';
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-16">
-      <div className="orb orb-1" aria-hidden="true" />
-      <main className="card-premium relative z-10 mx-auto flex w-full max-w-xl flex-col items-center rounded-2xl p-8 text-center md:p-12">
-        <div className="step-number flex h-16 w-16 items-center justify-center rounded-2xl text-2xl" aria-hidden="true">
-          {isUserNotFound ? '🔍' : '404'}
+    <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
+      <main className="card-premium mx-auto flex w-full max-w-2xl flex-col p-8 md:p-12">
+        {/* Sheet head: what is missing. */}
+        <div className="border-b border-border pb-3">
+          <span className="section-label">
+            {isUserNotFound ? dictionary.userLabel : dictionary.pageLabel}
+          </span>
         </div>
-        <span className="section-label mt-6">
-          {isUserNotFound ? dictionary.userLabel : dictionary.pageLabel}
-        </span>
-        <h1 className="gradient-text mt-3 text-2xl font-bold tracking-tight md:text-3xl">
+
+        {/*
+          The status is the figure, the sentence beneath it is the annotation.
+          The numeral repeats what the status line already says, so it is drawn
+          as the drawing's own dimension rather than announced twice.
+        */}
+        <p
+          aria-hidden="true"
+          className="mt-8 font-sans text-7xl font-black leading-none tracking-tight text-text-primary md:text-8xl"
+        >
+          404
+        </p>
+        <div className="mt-6 h-1 w-16 bg-accent" aria-hidden="true" />
+
+        <h1 className="gradient-text mt-6 font-sans text-2xl font-black tracking-tight md:text-3xl">
           {isUserNotFound ? dictionary.userTitle : dictionary.pageTitle}
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-text-secondary">
+
+        <p className="mt-4 font-mono text-sm leading-relaxed text-text-secondary">
           {isUserNotFound ? dictionary.userDescription : dictionary.pageDescription}
         </p>
+
         <LinkToHome locale={locale} label={dictionary.backHome} />
       </main>
     </div>
@@ -44,9 +59,11 @@ export default function NotFoundView({ locale, kind }: NotFoundViewProps) {
 
 function LinkToHome({ locale, label }: { locale: Locale; label: string }) {
   return (
+    // No `text-white`: the button class carries its own ink, and paper white on
+    // the night theme's signal yellow would fall below AA.
     <Link
       href={withLocale('/', locale)}
-      className="btn-primary relative z-10 mt-7 rounded-xl px-6 py-3 font-semibold text-white"
+      className="btn-primary mt-8 inline-flex items-center px-6 py-3 font-semibold"
     >
       <span className="relative z-10">{label}</span>
     </Link>

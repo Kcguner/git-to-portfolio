@@ -28,6 +28,7 @@
     "test:coverage:ci": "vitest run --coverage"
   },
   "dependencies": {
+    "@fontsource-variable/fraunces": "^5.0.0",
     "@fontsource/inter": "5.0.0",
     "@fontsource/jetbrains-mono": "5.0.0",
     "@vercel/analytics": "^2.0.1",
