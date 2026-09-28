@@ -184,4 +184,37 @@ describe("NotFoundView", () => {
     expect(html).toContain("Benutzer nicht gefunden");
     expect(html).toContain("<h1");
   });
+
+  it("draws both 404s as the same hairline sheet", () => {
+    for (const kind of ["page", "user"] as const) {
+      const { unmount } = render(<NotFoundView locale="en" kind={kind} />);
+
+      const sheet = screen.getByRole("heading").closest("main");
+      expect(sheet).toHaveClass("card-premium");
+      // One radius, in the stylesheet: no component sets its own.
+      expect(sheet?.className).not.toMatch(/rounded/);
+      expect(sheet?.querySelectorAll(".rounded-full")).toHaveLength(0);
+
+      // The status is the figure, and the reason is annotation in mono.
+      const figure = screen.getByText("404");
+      expect(figure).toHaveAttribute("aria-hidden", "true");
+      expect(figure).toHaveClass("font-sans", "font-black");
+      const reason = screen.getByText(
+        kind === "user"
+          ? EXPECTED_NOT_FOUND.en.userDescription
+          : EXPECTED_NOT_FOUND.en.pageDescription,
+      );
+      expect(reason).toHaveClass("font-mono", "text-text-secondary");
+
+      // Paper white on the night theme's signal yellow fails AA, so the button
+      // keeps the ink the class sets for itself.
+      const back = screen.getByRole("link");
+      expect(back).toHaveClass("btn-primary");
+      expect(back.className).not.toContain("text-white");
+
+      // The magnifying glass is gone: an emoji is not a drawing.
+      expect(sheet?.textContent).not.toContain("\u{1F50D}");
+      unmount();
+    }
+  });
 });

@@ -1,13 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
-import {
-  getProfile,
-  getTopRepos,
-  GitHubError,
-  GitHubUserNotFoundError,
-} from '@/lib/github';
-import type { GitHubProfile, GitHubRepo } from '@/lib/github';
+import { Suspense } from 'react';
+import { getProfile, GitHubUserNotFoundError } from '@/lib/github';
+import type { GitHubProfile } from '@/lib/github';
 import {
   getDictionary,
   getLocale,
@@ -19,7 +15,6 @@ import {
   getAlternateOpenGraphLocales,
   getLocaleAlternatesMetadata,
   getOpenGraphLocale,
-  getProfileJsonLd,
   getProfileKeywords,
   getProfileOpenGraphImagePath,
   getSocialImageMetadata,
@@ -27,19 +22,15 @@ import {
   NO_INDEX_ROBOTS,
   SITE_NAME,
 } from '@/lib/seo';
-import { calculateTopLanguages } from '@/lib/skills';
 import { normalizeUsername } from '@/lib/username';
-import JsonLd from '@/components/JsonLd';
-import ProfileCard from '@/components/ProfileCard';
-import RepoGrid from '@/components/RepoGrid';
 import PrintButton from '@/components/PrintButton';
+import ProfileCard from '@/components/ProfileCard';
+import ProfileRepos from '@/components/ProfileRepos';
+import ReposSkeleton from '@/components/ReposSkeleton';
 import ShareButton from '@/components/ShareButton';
 import SiteHeader from '@/components/SiteHeader';
 
 export const revalidate = 3600;
-
-/** Number of repositories shown on the portfolio, and used for language stats. */
-const FEATURED_REPO_COUNT = 6;
 
 type PageProps = {
   params: Promise<{ username: string }>;
@@ -60,19 +51,10 @@ async function resolveUsername(
 }
 
 /**
- * Returns a short, non-sensitive description of a GitHub failure for logs.
- * The error message may embed request details, so only the failure code and
- * the HTTP status are ever surfaced; neither contains the token or headers.
+ * The page's title, description, canonical URL and social card. It runs on the
+ * same profile lookup as the page below, and turns any failure into a
+ * localized no-index title rather than a promise of a page that is not there.
  */
-function describeGitHubFailure(error: unknown): string {
-  if (error instanceof GitHubError) {
-    return error.status === undefined
-      ? error.code
-      : `${error.code} (status ${error.status})`;
-  }
-  return 'unknown';
-}
-
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const [resolvedUsername, query] = await Promise.all([resolveUsername(params), searchParams]);
   const locale = getLocale(query);
@@ -137,6 +119,12 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 }
 
 export default async function UserPage({ params, searchParams }: PageProps) {
+  // Everything above the Suspense boundary below runs before the response is
+  // committed, which is what makes the two outcomes real HTTP status lines: a
+  // missing user is a `404` and a non-canonical login is a `308`. Adding a
+  // route-level `loading.tsx` or moving a lookup below the boundary would turn
+  // both into a streamed `200` with the same UI, so nothing that can suspend is
+  // allowed to cross that line.
   const [resolvedUsername, query] = await Promise.all([resolveUsername(params), searchParams]);
   if (!resolvedUsername) notFound();
 
@@ -160,34 +148,9 @@ export default async function UserPage({ params, searchParams }: PageProps) {
     permanentRedirect(withLocale(getProfilePathname(canonicalUsername), locale, query));
   }
 
-  // The repository search endpoint is rate limited far more aggressively than
-  // the profile endpoint (10 requests/minute unauthenticated), so a secondary
-  // rate limit here must not take the whole page down with it. The profile
-  // card, the languages block and the repository empty state still render.
-  // Ask for exactly as many repositories as are displayed: the featured
-  // language percentages are derived from the same six, so fetching a larger
-  // page only burns transfer size and search-API quota. The slice below keeps
-  // the page's own contract independent of the data layer's count handling.
-  let repos: GitHubRepo[] = [];
-  let reposUnavailable = false;
-  try {
-    repos = await getTopRepos(canonicalUsername, FEATURED_REPO_COUNT);
-  } catch (error) {
-    reposUnavailable = true;
-    // Warn, not error: the page renders successfully with an empty repository
-    // state. `console.error` would trip the Next.js dev error overlay and make
-    // a working page look broken.
-    console.warn(
-      `[profile] repository lookup failed (${describeGitHubFailure(error)}); rendering the profile without repositories`
-    );
-  }
-
-  const topRepos = repos.slice(0, FEATURED_REPO_COUNT);
-  const topLanguages = calculateTopLanguages(topRepos);
   const displayName = profile.name?.trim() || profile.login;
   const description = profile.bio?.trim() || dictionary.metadata.portfolioDescription(displayName);
   const shareTitle = dictionary.metadata.portfolioTitle(displayName);
-  const shareText = description;
   const pathname = getProfilePathname(canonicalUsername);
   // The localized, canonical URL of this page: what gets shared, printed and
   // described in structured data.
@@ -195,36 +158,13 @@ export default async function UserPage({ params, searchParams }: PageProps) {
 
   return (
     <div className="relative min-h-screen">
-      {/* The person, their featured repositories and their languages, in the
-          language of this page. */}
-      <JsonLd
-        data={getProfileJsonLd({
-          locale,
-          pathname,
-          displayName,
-          login: profile.login,
-          description,
-          avatarUrl: profile.avatar_url,
-          profileUrl: profile.html_url,
-          blogUrl: profile.blog,
-          twitterUsername: profile.twitter_username,
-          repositories: topRepos.map((repo) => ({
-            name: repo.name,
-            url: repo.html_url,
-            description: repo.description,
-            language: repo.language,
-            stars: repo.stargazers_count,
-          })),
-          topLanguages,
-        })}
-      />
       <SiteHeader
         locale={locale}
         actions={(
-          <div className="no-print flex items-center gap-2">
+          <div className="no-print flex shrink-0 items-center gap-2">
             <Link
               href={withLocale('/', locale)}
-              className="hidden items-center gap-2 rounded-lg border border-border bg-surface-elevated px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary md:inline-flex"
+              className="hidden h-9 shrink-0 items-center gap-2 border border-border bg-surface-elevated px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary md:inline-flex"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="m15 18-6-6 6-6" />
@@ -234,7 +174,6 @@ export default async function UserPage({ params, searchParams }: PageProps) {
             <ShareButton
               locale={locale}
               title={shareTitle}
-              text={shareText}
               url={shareUrl}
             />
             <PrintButton locale={locale} />
@@ -250,25 +189,40 @@ export default async function UserPage({ params, searchParams }: PageProps) {
           <div className="flex items-center justify-between gap-3">
             <span className="section-label">
               {dictionary.profile.profileOf}
-              {/* On mobile the login lives in the compact tag below instead. */}
+              {/* On mobile the login lives in the compact stamp below instead. */}
               <span className="hidden sm:inline"> {profile.login}</span>
             </span>
-            <span className="tag shrink-0 rounded-full px-3 py-1.5 sm:hidden">@{profile.login}</span>
+            {/* A stamped square, not a chip. min-w-0 + truncate: a 39-char
+                login must ellipsize instead of pushing the sheet wider. */}
+            <span className="tag min-w-0 truncate px-3 py-1.5 sm:hidden">@{profile.login}</span>
           </div>
           {/*
             The page's single <h1> is the display name rendered by ProfileCard.
-            This is a plain paragraph so the document keeps exactly one h1.
+            This is a plain paragraph so the document keeps exactly one h1, and
+            it is set in the same heavy grotesk as every other heading.
           */}
-          <p className="mt-2 text-2xl font-bold tracking-tight text-text-primary">{dictionary.profile.portfolioTitle}</p>
+          <p className="mt-2 font-sans text-2xl font-black tracking-tight text-text-primary">{dictionary.profile.portfolioTitle}</p>
         </div>
 
-        <ProfileCard profile={profile} topLanguages={topLanguages} locale={locale} />
+        <ProfileCard profile={profile} locale={locale} />
 
-        <div className="mt-10 sm:mt-12">
-          <RepoGrid repos={topRepos} locale={locale} unavailable={reposUnavailable} />
-        </div>
+        {/* The person, their featured repositories and their languages, in the
+            language of this page. The repository half of the sheet is the slow
+            one, so it streams in behind its own boundary: the shell above is
+            already complete, and the status line was committed before any of
+            it ran. */}
+        <Suspense fallback={<ReposSkeleton locale={locale} />}>
+          <ProfileRepos
+            username={canonicalUsername}
+            locale={locale}
+            profile={profile}
+            displayName={displayName}
+            description={description}
+          />
+        </Suspense>
 
-        <footer className="mt-12 border-t border-border/50 pt-6 text-center text-xs text-text-muted">
+        {/* Titleblock strip: a framed line of annotation under the last detail. */}
+        <footer className="mt-12 border border-border px-5 py-3 text-center font-mono text-[11px] uppercase tracking-[0.12em] text-text-muted">
           {dictionary.profile.footer}
           {/* A printed sheet has no address bar, so the page states its own URL. */}
           <span className="print-only"> · {shareUrl}</span>

@@ -6,6 +6,7 @@ import {
   GitHubTimeoutError,
   GitHubUpstreamError,
   GitHubUserNotFoundError,
+  getPinnedRepos,
   getProfile,
   getTopRepos,
 } from '../../lib/github';
@@ -53,6 +54,31 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 
 function reposResponse(items: unknown[]): Response {
   return jsonResponse(items);
+}
+
+/** One `Repository` node as the pinned-repositories query returns it. */
+function pinnedRepo(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    databaseId: 11,
+    name: 'hello-world',
+    nameWithOwner: 'octocat/hello-world',
+    url: 'https://github.com/octocat/hello-world',
+    description: 'My first repository',
+    stargazers: 10,
+    forks: 2,
+    primaryLanguage: { name: 'TypeScript' },
+    repositoryTopics: {
+      nodes: [{ topic: { name: 'octocat' } }, { topic: { name: 'cli' } }],
+    },
+    isFork: false,
+    isArchived: false,
+    updatedAt: '2026-01-02T03:04:05Z',
+    ...overrides,
+  };
+}
+
+function pinnedResponse(nodes: unknown[]): Response {
+  return jsonResponse({ data: { user: { pinnedItems: { nodes } } } });
 }
 
 describe('GitHub data layer', () => {
@@ -395,6 +421,34 @@ describe('GitHub data layer', () => {
       await expect(getTopRepos('octocat')).rejects.toBeInstanceOf(GitHubUpstreamError);
     });
 
+    it('keeps at most three topics, the most a card has room for', async () => {
+      fetchMock.mockResolvedValueOnce(
+        reposResponse([
+          repo({
+            topics: ['a', 'b', 'c', 'd', 'e'],
+          }),
+        ])
+      );
+
+      const [first] = await getTopRepos('octocat');
+      expect(first?.topics).toEqual(['a', 'b', 'c']);
+    });
+
+    it('reports no topics when the listing has none or has them malformed', async () => {
+      // A missing `topics` field is the norm on older responses; a wrong one is
+      // not worth failing a whole profile over, since the field is decoration.
+      fetchMock
+        .mockResolvedValueOnce(reposResponse([repo({ topics: undefined })]))
+        .mockResolvedValueOnce(reposResponse([repo({ topics: 'cli' })]))
+        .mockResolvedValueOnce(reposResponse([repo({ topics: ['cli', 7] })]));
+
+      for (const call of [1, 2, 3]) {
+        const [fetched] = await getTopRepos('octocat');
+        expect(fetched?.topics).toEqual([]);
+        expect(fetchMock).toHaveBeenCalledTimes(call);
+      }
+    });
+
     it('retries idempotent transient 503 responses with bounded backoff', async () => {
       fetchMock
         .mockResolvedValueOnce(new Response(null, { status: 503 }))
@@ -432,6 +486,227 @@ describe('GitHub data layer', () => {
         getProfile('octocat', { signal: controller.signal, maxRetries: 2, retryBaseDelayMs: 0 })
       ).rejects.toBe('cancelled by caller');
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getPinnedRepos', () => {
+    /** The fallback is a silent one, so the warning itself is the contract. */
+    function silenceWarnings() {
+      return vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    }
+
+    it('maps pinned items onto the REST repository shape over GraphQL', async () => {
+      fetchMock.mockResolvedValueOnce(
+        pinnedResponse([pinnedRepo(), pinnedRepo({ databaseId: 12, name: 'no-language', nameWithOwner: 'octocat/no-language', primaryLanguage: null, repositoryTopics: { nodes: [] } })])
+      );
+
+      await expect(getPinnedRepos(' octocat ')).resolves.toEqual([
+        {
+          id: 11,
+          name: 'hello-world',
+          full_name: 'octocat/hello-world',
+          html_url: 'https://github.com/octocat/hello-world',
+          description: 'My first repository',
+          stargazers_count: 10,
+          forks_count: 2,
+          language: 'TypeScript',
+          updated_at: '2026-01-02T03:04:05Z',
+          fork: false,
+          archived: false,
+          topics: ['octocat', 'cli'],
+        },
+        {
+          id: 12,
+          name: 'no-language',
+          full_name: 'octocat/no-language',
+          html_url: 'https://github.com/octocat/hello-world',
+          description: 'My first repository',
+          stargazers_count: 10,
+          forks_count: 2,
+          language: null,
+          updated_at: '2026-01-02T03:04:05Z',
+          fork: false,
+          archived: false,
+          topics: [],
+        },
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      // Pinned items only exist in GraphQL; the REST API has no pinned endpoint.
+      expect(url).toBe('https://api.github.com/graphql');
+      expect(init).toMatchObject({ method: 'POST' });
+      expect(init?.headers).toMatchObject({
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer test-token',
+      });
+      const body = JSON.parse(String(init?.body));
+      expect(body.query).toContain('pinnedItems(first: $first, types: REPOSITORY)');
+      expect(body.variables).toEqual({ login: 'octocat', first: 6 });
+    });
+
+    it('skips the request entirely without a token', async () => {
+      // The GraphQL API has no anonymous quota, so the call could only fail.
+      const warn = silenceWarnings();
+      delete process.env.GITHUB_TOKEN;
+
+      await expect(getPinnedRepos('octocat')).resolves.toBeNull();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      // A missing token is a configuration, not a failure to report.
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('ignores a blank token and reports an unusable username without a request', async () => {
+      const warn = silenceWarnings();
+      process.env.GITHUB_TOKEN = '   ';
+
+      await expect(getPinnedRepos('octocat')).resolves.toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+
+      process.env.GITHUB_TOKEN = 'test-token';
+      await expect(getPinnedRepos('../octocat')).resolves.toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty list when the user pinned nothing', async () => {
+      fetchMock.mockResolvedValueOnce(pinnedResponse([]));
+
+      // An empty list is a successful answer, not a reason to fall back twice:
+      // the caller decides, and it treats it the same as `null`.
+      await expect(getPinnedRepos('octocat')).resolves.toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns null and warns once for a rejected token', async () => {
+      const warn = silenceWarnings();
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+
+      await expect(getPinnedRepos('octocat')).resolves.toBeNull();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledOnce();
+      const [message] = warn.mock.calls[0] as [string];
+      expect(message).toContain('auth');
+      expect(message).toContain('status 401');
+      expect(message).not.toContain('test-token');
+    });
+
+    it('returns null for rate limits, timeouts and transport failures', async () => {
+      const warn = silenceWarnings();
+      fetchMock.mockResolvedValueOnce(
+        new Response(null, {
+          status: 403,
+          headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1' },
+        })
+      );
+
+      await expect(getPinnedRepos('octocat')).resolves.toBeNull();
+      expect(warn.mock.calls[0]?.[0]).toContain('primary-rate-limit');
+
+      fetchMock.mockResolvedValueOnce(
+        new Response(null, { status: 429, headers: { 'retry-after': '2' } })
+      );
+      await expect(getPinnedRepos('octocat')).resolves.toBeNull();
+      expect(warn.mock.calls[1]?.[0]).toContain('secondary-rate-limit');
+
+      fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+      await expect(
+        getPinnedRepos('octocat', { maxRetries: 0, retryBaseDelayMs: 0 })
+      ).resolves.toBeNull();
+      expect(warn.mock.calls[2]?.[0]).toContain('upstream');
+    });
+
+    it('returns null when the request times out', async () => {
+      vi.useFakeTimers();
+      const warn = silenceWarnings();
+      fetchMock.mockImplementation((_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+        })
+      );
+
+      const request = getPinnedRepos('octocat', { timeoutMs: 25, maxRetries: 0 });
+      const assertion = expect(request).resolves.toBeNull();
+      await vi.advanceTimersByTimeAsync(25);
+      await assertion;
+
+      expect(warn.mock.calls[0]?.[0]).toContain('timeout');
+    });
+
+    it('returns null for GraphQL errors reported inside a 200 response', async () => {
+      const warn = silenceWarnings();
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ data: null, errors: [{ type: 'NOT_FOUND' }] })
+      );
+
+      await expect(getPinnedRepos('octocat')).resolves.toBeNull();
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it.each([
+      ['a missing data object', jsonResponse({})],
+      ['a missing user', jsonResponse({ data: { user: null } })],
+      [
+        'a non-array node list',
+        jsonResponse({ data: { user: { pinnedItems: { nodes: {} } } } }),
+      ],
+      ['a malformed node', pinnedResponse([pinnedRepo({ stargazers: 'ten' })])],
+      [
+        'a malformed topic wrapper',
+        pinnedResponse([pinnedRepo({ repositoryTopics: { nodes: [{ name: 'cli' }] } })]),
+      ],
+      [
+        'a repository without an id',
+        pinnedResponse([pinnedRepo({ databaseId: null })]),
+      ],
+    ])('returns null for %s', async (_label, response) => {
+      const warn = silenceWarnings();
+      fetchMock.mockResolvedValueOnce(response);
+
+      await expect(getPinnedRepos('octocat')).resolves.toBeNull();
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it('skips null union nodes instead of failing the whole list', async () => {
+      fetchMock.mockResolvedValueOnce(pinnedResponse([null, pinnedRepo(), undefined]));
+
+      const pinned = await getPinnedRepos('octocat');
+      expect(pinned?.map(({ id }) => id)).toEqual([11]);
+    });
+
+    it('caps the topic list at three, like the REST parser', async () => {
+      fetchMock.mockResolvedValueOnce(
+        pinnedResponse([
+          pinnedRepo({
+            repositoryTopics: {
+              nodes: ['a', 'b', 'c', 'd', 'e'].map((name) => ({ topic: { name } })),
+            },
+          }),
+        ])
+      );
+
+      const [first] = (await getPinnedRepos('octocat')) ?? [];
+      expect(first?.topics).toEqual(['a', 'b', 'c']);
+    });
+
+    it('reuses the shared retry and cache behaviour of the REST calls', async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response(null, { status: 503 }))
+        .mockResolvedValueOnce(pinnedResponse([pinnedRepo()]));
+
+      await expect(
+        getPinnedRepos('octocat', { maxRetries: 1, retryBaseDelayMs: 0 })
+      ).resolves.toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      fetchMock.mockResolvedValueOnce(pinnedResponse([pinnedRepo()]));
+      await getPinnedRepos('octocat', { cache: 'no-store' });
+      const init = fetchMock.mock.calls[2]?.[1];
+      expect(init).toMatchObject({ cache: 'no-store' });
+      expect(init).not.toHaveProperty('next');
     });
   });
 });

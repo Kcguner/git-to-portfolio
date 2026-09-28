@@ -1,8 +1,9 @@
 import { Suspense } from "react";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import DocumentLocale from "@/components/DocumentLocale";
+import DocumentTheme from "@/components/DocumentTheme";
 import JsonLd from "@/components/JsonLd";
 import { DEFAULT_LOCALE, getDictionary } from "@/lib/i18n";
 import { getLocaleFromHeaderValue, LOCALE_HEADER } from "@/lib/locale-negotiation";
@@ -13,6 +14,7 @@ import {
   SITE_NAME,
 } from "@/lib/seo";
 import { getSiteUrl } from "@/lib/site";
+import { THEME_COOKIE, THEME_COLORS, type Theme } from "@/lib/theme";
 import "./fonts.scss";
 import "./globals.css";
 
@@ -23,6 +25,14 @@ const siteUrl = getSiteUrl();
 // the 404 segments, which have no page metadata of their own beyond a title.
 const defaultDictionary = getDictionary(DEFAULT_LOCALE);
 const description = defaultDictionary.metadata.homeDescription;
+
+// The blueprint is drawn for the night shift: only the exact value "light"
+// selects the paper palette. Anything else, including a missing or
+// hand-edited cookie, falls back to the dark default.
+async function getTheme(): Promise<Theme> {
+  const value = (await cookies()).get(THEME_COOKIE)?.value;
+  return value === "light" ? "light" : "dark";
+}
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -56,10 +66,17 @@ export const metadata: Metadata = {
   robots: INDEXABLE_ROBOTS,
 };
 
-export const viewport: Viewport = {
-  themeColor: "#0a0a0c",
-  colorScheme: "dark",
-};
+// The browser chrome has to match the page, and the page's background follows
+// the theme cookie, so the theme-color meta tag is resolved per request. The
+// `color-scheme` is deliberately left to CSS: globals.css sets it on the
+// <html> theme class, which also covers native controls and scrollbars.
+export async function generateViewport(): Promise<Viewport> {
+  return {
+    width: "device-width",
+    initialScale: 1,
+    themeColor: THEME_COLORS[await getTheme()],
+  };
+}
 
 export default async function RootLayout({
   children,
@@ -72,17 +89,20 @@ export default async function RootLayout({
   // and clients without JavaScript. Reading headers makes the layout dynamic,
   // which both routes already were; the metadata routes (robots, sitemap,
   // manifest, opengraph-image) do not render this layout and stay static.
-  const locale = getLocaleFromHeaderValue((await headers()).get(LOCALE_HEADER));
+  // The theme is read the same way, so <html> carries the visitor's palette
+  // before the first paint instead of flashing the wrong one.
+  const [locale, theme] = await Promise.all([
+    getLocaleFromHeaderValue((await headers()).get(LOCALE_HEADER)),
+    getTheme(),
+  ]);
 
   return (
-    <html lang={locale} className="dark">
+    <html lang={locale} className={theme}>
       <body className="noise-bg min-h-screen antialiased">
         {/* The site itself, described once per document in the reader's language.
             A JSON-LD data block is valid in the body and is not executable, so
             the Content-Security-Policy does not apply to it. */}
         <JsonLd data={getSiteJsonLd(locale)} />
-        <div className="fixed inset-0 grid-bg pointer-events-none" aria-hidden="true" />
-        <div className="fixed inset-0 glow-top pointer-events-none" aria-hidden="true" />
         <div className="site-shell">{children}</div>
         {/* Vercel Web Analytics. The `next` entry point is used instead of the
             bare React one so the page view is attributed to the route pattern
@@ -99,6 +119,7 @@ export default async function RootLayout({
         <Analytics />
         <Suspense fallback={null}>
           <DocumentLocale />
+          <DocumentTheme />
         </Suspense>
       </body>
     </html>

@@ -13,6 +13,7 @@ const navigationMocks = vi.hoisted(() => ({
 
 const githubMocks = vi.hoisted(() => ({
   getProfile: vi.fn(),
+  getPinnedRepos: vi.fn(),
   getTopRepos: vi.fn(),
 }));
 
@@ -29,6 +30,7 @@ vi.mock("../../lib/github", async () => {
   return {
     ...actual,
     getProfile: githubMocks.getProfile,
+    getPinnedRepos: githubMocks.getPinnedRepos,
     getTopRepos: githubMocks.getTopRepos,
   };
 });
@@ -47,24 +49,39 @@ vi.mock("../../components/ShareButton", () => ({
 }));
 
 vi.mock("../../components/ProfileCard", () => ({
+  default: ({ profile }: { profile: GitHubProfile }) => (
+    <section data-profile={profile.login} />
+  ),
+}));
+
+// The repository block is the boundary this page streams through, so its two
+// leaves are mocked here and asserted through their data attributes: what this
+// file is about is which block the page asked for, not how it is drawn.
+vi.mock("../../components/FeaturedLanguages", () => ({
   default: ({
-    profile,
-    topLanguages,
+    languages,
   }: {
-    profile: GitHubProfile;
-    topLanguages: Array<{ name: string; percent: number }>;
+    languages: Array<{ name: string; percent: number }>;
   }) => (
-    <section
-      data-profile={profile.login}
-      data-languages={topLanguages.map(({ name, percent }) => `${name}:${percent}`).join(",")}
+    <ul
+      data-languages={languages.map(({ name, percent }) => `${name}:${percent}`).join(",")}
     />
   ),
 }));
 
 vi.mock("../../components/RepoGrid", () => ({
-  default: ({ repos, unavailable }: { repos: GitHubRepo[]; unavailable?: boolean }) => (
+  default: ({
+    repos,
+    source,
+    unavailable,
+  }: {
+    repos: GitHubRepo[];
+    source?: string;
+    unavailable?: boolean;
+  }) => (
     <div
       data-repositories={repos.map(({ name }) => name).join(",")}
+      data-source={source ?? ""}
       data-unavailable={String(Boolean(unavailable))}
     />
   ),
@@ -128,6 +145,7 @@ function repo(id: number, language: string | null): GitHubRepo {
     updated_at: "2026-01-02T03:04:05Z",
     fork: false,
     archived: false,
+    topics: [],
   };
 }
 
@@ -141,7 +159,26 @@ const repos = [
   repo(7, "Python"),
 ];
 
+/**
+ * Renders the page with its repository block resolved.
+ *
+ * The block is behind a Suspense boundary, so the static renderer would only
+ * ever produce its fallback. The stream is drained to the end instead, which is
+ * what a browser does once the last chunk arrives.
+ */
 async function render(element: React.ReactElement) {
+  const { renderToReadableStream } = await import("react-dom/server");
+  const stream = await renderToReadableStream(element);
+  await stream.allReady;
+  return new Response(stream).text();
+}
+
+/**
+ * Renders only the shell: whatever the server has committed to before the
+ * repository lookup runs. This is the part of the response whose presence keeps
+ * the status line meaningful, because a streamed body is already `200 OK`.
+ */
+async function renderShell(element: React.ReactElement) {
   const { renderToStaticMarkup } = await import("react-dom/server");
   return renderToStaticMarkup(element);
 }
@@ -173,6 +210,7 @@ async function renderProfileCard(props: ActualProfileCardProps) {
 describe("profile page", () => {
   beforeEach(() => {
     githubMocks.getProfile.mockResolvedValue(profile);
+    githubMocks.getPinnedRepos.mockResolvedValue(null);
     githubMocks.getTopRepos.mockResolvedValue(repos);
   });
 
@@ -180,6 +218,7 @@ describe("profile page", () => {
     navigationMocks.notFound.mockClear();
     navigationMocks.permanentRedirect.mockClear();
     githubMocks.getProfile.mockReset();
+    githubMocks.getPinnedRepos.mockReset();
     githubMocks.getTopRepos.mockReset();
   });
 
@@ -193,8 +232,67 @@ describe("profile page", () => {
     expect(html).toContain('data-profile="octocat"');
     expect(html).toContain('data-languages="JavaScript:83,TypeScript:17"');
     expect(html).toContain('data-repositories="repo-1,repo-2,repo-3,repo-4,repo-5,repo-6"');
+    expect(html).toContain('data-source="starred"');
     expect(html).toContain('data-unavailable="false"');
     expect(html).not.toContain("repo-7");
+    expect(githubMocks.getTopRepos).toHaveBeenCalledWith("octocat", 6);
+  });
+
+  it("holds the repository block behind a boundary that a status line can survive", async () => {
+    const element = await UserPage({
+      params: Promise.resolve({ username: "octocat" }),
+      searchParams: Promise.resolve({ lang: "en" }),
+    });
+
+    // The page returned its tree without asking GitHub for a single repository.
+    // Nothing above the boundary suspends, so an unknown user is still a `404`
+    // and a non-canonical login is still a `308` rather than a streamed `200`.
+    expect(githubMocks.getPinnedRepos).not.toHaveBeenCalled();
+    expect(githubMocks.getTopRepos).not.toHaveBeenCalled();
+
+    const shell = await renderShell(element);
+
+    // What the shell does contain: the person, and a skeleton in the space the
+    // repository block will take.
+    expect(shell).toContain('data-profile="octocat"');
+    expect(shell).toContain('role="status"');
+    expect(shell).toContain('aria-busy="true"');
+    expect(shell).toContain(dictionaries.en.profile.profileLoading);
+    expect(shell).not.toContain("data-repositories");
+    expect(shell).not.toContain("data-languages");
+  });
+
+  it("shows the repositories the user pinned instead of ranking their own work", async () => {
+    const pinned = [repo(101, "TypeScript"), repo(102, "TypeScript"), repo(103, "JavaScript")];
+    githubMocks.getPinnedRepos.mockResolvedValue(pinned);
+
+    const element = await UserPage({
+      params: Promise.resolve({ username: "octocat" }),
+      searchParams: Promise.resolve({ lang: "en" }),
+    });
+    const html = await render(element);
+
+    expect(html).toContain('data-repositories="repo-101,repo-102,repo-103"');
+    expect(html).toContain('data-source="pinned"');
+    // The featured languages follow whichever list is on the sheet.
+    expect(html).toContain('data-languages="TypeScript:67,JavaScript:33"');
+    // The ranking is the fallback: it is not paid for when the pinned list
+    // answers, and the canonical login is what gets looked up.
+    expect(githubMocks.getPinnedRepos).toHaveBeenCalledWith("octocat");
+    expect(githubMocks.getTopRepos).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the ranked repositories when nothing is pinned", async () => {
+    githubMocks.getPinnedRepos.mockResolvedValue([]);
+
+    const element = await UserPage({
+      params: Promise.resolve({ username: "octocat" }),
+      searchParams: Promise.resolve({ lang: "tr" }),
+    });
+    const html = await render(element);
+
+    expect(html).toContain('data-repositories="repo-1,repo-2,repo-3,repo-4,repo-5,repo-6"');
+    expect(html).toContain('data-source="starred"');
     expect(githubMocks.getTopRepos).toHaveBeenCalledWith("octocat", 6);
   });
 
@@ -255,10 +353,10 @@ describe("profile page", () => {
     });
     const html = await render(element);
 
-    // The profile card still renders, the languages block is empty and the
+    // The profile card still renders, the languages block is left out and the
     // repository grid falls back to its empty state.
     expect(html).toContain('data-profile="octocat"');
-    expect(html).toContain('data-languages=""');
+    expect(html).not.toContain("data-languages");
     expect(html).toContain('data-repositories=""');
     // The empty state must be marked unavailable, otherwise the page claims
     // the user has no public repositories when GitHub was simply unreachable.
@@ -310,6 +408,8 @@ describe("profile page", () => {
 
     expect(navigationMocks.permanentRedirect).toHaveBeenCalledWith("/mona?lang=en");
     expect(githubMocks.getTopRepos).not.toHaveBeenCalled();
+    // No repository lookup before the profile is confirmed and canonical.
+    expect(githubMocks.getPinnedRepos).not.toHaveBeenCalled();
   });
 
   it("rejects an unusable username before any GitHub call", async () => {
@@ -322,6 +422,7 @@ describe("profile page", () => {
 
     expect(navigationMocks.notFound).toHaveBeenCalledOnce();
     expect(githubMocks.getProfile).not.toHaveBeenCalled();
+    expect(githubMocks.getPinnedRepos).not.toHaveBeenCalled();
   });
 
   it("skips the profile lookup for an unusable username in metadata", async () => {
@@ -342,16 +443,36 @@ describe("profile page", () => {
     });
     const html = await render(element);
 
-    // Section label + login, plus the compact mobile-only @login tag.
+    // Section label + login, plus the compact mobile-only @login stamp. The
+    // streamed markup separates adjacent text nodes with a comment marker, so
+    // the login is matched across it rather than glued to the closing bracket.
     expect(html).toContain("Profile /");
-    expect(html).toContain('class="hidden sm:inline"> octocat');
-    expect(html).toContain('class="tag shrink-0 rounded-full px-3 py-1.5 sm:hidden"');
+    expect(html).toMatch(/class="hidden sm:inline">\s*(?:<!-- -->\s*)?octocat/);
+    // A stamped square, not a pill: the single CSS radius governs the sheet,
+    // and a 39-char login ellipsizes instead of pushing the sheet wider.
+    expect(html).toContain('class="tag min-w-0 truncate px-3 py-1.5 sm:hidden"');
+    expect(html).not.toContain("rounded-full");
     // The title is a paragraph now; the single h1 comes from ProfileCard.
     expect(html).toContain(
-      '<p class="mt-2 text-2xl font-bold tracking-tight text-text-primary">GitHub portfolio</p>'
+      '<p class="mt-2 font-sans text-2xl font-black tracking-tight text-text-primary">GitHub portfolio</p>'
     );
     expect(html).not.toContain("<h1");
     expect(html).not.toContain("hidden sm:block");
+  });
+
+  it("closes the sheet with a titleblock footer instead of a bare rule", async () => {
+    const element = await UserPage({
+      params: Promise.resolve({ username: "octocat" }),
+      searchParams: Promise.resolve({ lang: "en" }),
+    });
+    const html = await render(element);
+
+    // A drawn strip: framed, in the mono annotation face, not a centred line
+    // floating under a fading rule.
+    const footer = html.slice(html.indexOf("<footer"));
+    expect(footer).toContain("border border-border");
+    expect(footer).toContain("font-mono");
+    expect(footer).not.toContain("border-t border-border/50");
   });
 
   it("uses localized no-index metadata for a missing profile", async () => {
@@ -488,14 +609,9 @@ describe("profile page", () => {
 });
 
 describe("profile card avatar host handling", () => {
-  const topLanguages: ActualProfileCardProps["topLanguages"] = [
-    { name: "TypeScript", count: 3, percent: 100 },
-  ];
-
   it("optimizes allowlisted GitHub avatar hosts", async () => {
     const html = await renderProfileCard({
       profile,
-      topLanguages,
       locale: "en",
     });
 
@@ -505,7 +621,6 @@ describe("profile card avatar host handling", () => {
 
     const identicon = await renderProfileCard({
       profile: { ...profile, avatar_url: "https://github.com/identicons/octocat.png" },
-      topLanguages: [],
       locale: "en",
     });
     expect(identicon).toContain('src="https://github.com/identicons/octocat.png"');
@@ -514,7 +629,6 @@ describe("profile card avatar host handling", () => {
   it("falls back to an initial avatar for unknown hosts", async () => {
     const html = await renderProfileCard({
       profile: { ...profile, avatar_url: "https://cdn.example.com/evil.png" },
-      topLanguages,
       locale: "en",
     });
 
@@ -524,14 +638,14 @@ describe("profile card avatar host handling", () => {
     expect(html).toContain("profile-avatar");
     // First character of the display name, upper-cased.
     expect(html).toMatch(/profile-avatar[^>]*>T</);
-    // The languages block is unaffected by the avatar failure.
-    expect(html).toContain("TypeScript");
+    // The rest of the card is unaffected by the avatar failure.
+    expect(html).toContain("GitHub mascot");
+    expect(html).toContain("border-l border-t border-border");
   });
 
   it("falls back for non-https and unparsable avatar URLs", async () => {
     const insecure = await renderProfileCard({
       profile: { ...profile, avatar_url: "http://github.com/identicons/x.png" },
-      topLanguages: [],
       locale: "en",
     });
     expect(insecure).not.toContain("<img");
@@ -539,7 +653,6 @@ describe("profile card avatar host handling", () => {
 
     const broken = await renderProfileCard({
       profile: { ...profile, avatar_url: "not a url" },
-      topLanguages: [],
       locale: "en",
     });
     expect(broken).not.toContain("<img");
@@ -549,35 +662,32 @@ describe("profile card avatar host handling", () => {
   it("uses the login initial when the profile has no name", async () => {
     const html = await renderProfileCard({
       profile: { ...profile, name: null, avatar_url: "https://evil.test/a.png" },
-      topLanguages: [],
       locale: "en",
     });
 
     expect(html).toMatch(/profile-avatar[^>]*>O</);
   });
 
-  it("exposes the verification badge label to assistive technology", async () => {
-    const html = await renderProfileCard({ profile, topLanguages: [], locale: "en" });
+  it("does not claim the profile is verified", async () => {
+    const html = await renderProfileCard({ profile, locale: "en" });
 
-    // No more title/aria-hidden contradiction: the label is real, sr-only text.
-    expect(html).not.toContain("title=");
-    expect(html).toContain('<span class="sr-only">GitHub profile link</span>');
+    // GitHub's API says nothing about verification, so the card used to assert
+    // something it could not know. The badge, its label and its decorative
+    // frame are all gone.
+    expect(html).not.toContain("GitHub profile link");
+    expect(html).not.toContain("sr-only");
+    expect(html).not.toContain('class="absolute -bottom-1 -right-1');
   });
 
   it("keeps a single h1 as the display name", async () => {
-    const html = await renderProfileCard({
-      profile,
-      topLanguages,
-      locale: "en",
-    });
+    const html = await renderProfileCard({ profile, locale: "en" });
 
     expect(html.match(/<h1/g)).toHaveLength(1);
     expect(html).toContain(
-      '<h1 class="gradient-text mt-3 break-words text-3xl font-bold tracking-tight sm:text-4xl">The Octocat</h1>'
+      '<h1 class="gradient-text mt-3 break-words font-sans text-4xl font-black tracking-tight sm:text-5xl">The Octocat</h1>'
     );
-    // Nested section headings stay in place for screen readers.
-    expect(html).toContain(
-      '<h2 class="mt-2 text-lg font-semibold tracking-tight text-text-primary">Top 3 languages</h2>'
-    );
+    // The card is one detail of the sheet: the languages and the projects are
+    // drawn outside it, so they bring their own headings with them.
+    expect(html).not.toContain("<h2");
   });
 });

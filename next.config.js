@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  // Phones on the same Wi-Fi open the dev server over the network IP, and
+  // Next blocks cross-origin HMR by default. This only affects `next dev`.
+  allowedDevOrigins: ['192.168.0.23'],
   sassOptions: {
     quietDeps: true,
   },
