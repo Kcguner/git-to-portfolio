@@ -42,7 +42,11 @@ export async function generateMetadata({ searchParams }: HomePageProps): Promise
   );
 
   return {
-    title,
+    // `absolute`, not the bare string: the root layout's `%s | Git-to-Portfolio`
+    // template is for child segments, and letting it wrap a title that already
+    // carries the brand would render "Git to Portfolio … | Git-to-Portfolio".
+    // The home page owns its full title.
+    title: { absolute: title },
     description,
     keywords: getHomeKeywords(locale),
     alternates,
@@ -171,11 +175,18 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </span>
             </h1>
 
-            <p className="mt-8 max-w-2xl text-base leading-relaxed text-text-secondary md:text-lg">
+            {/*
+              The poster h1 above is the product's name mark, so the sentence
+              that says what the product does is the page's subheading, not
+              body copy. It carries the words a search query actually uses —
+              the brand plus "GitHub portfolio" in this language — and the
+              highlighted span is the brand itself.
+            */}
+            <h2 className="mt-8 max-w-2xl text-balance text-base font-normal leading-relaxed text-text-secondary md:text-lg">
               {dictionary.home.heroBefore}
               <span className="font-semibold text-text-primary">{dictionary.home.heroHighlight}</span>
               {dictionary.home.heroAfter}
-            </p>
+            </h2>
 
             <div className="mt-10">
               <SearchForm locale={locale} />

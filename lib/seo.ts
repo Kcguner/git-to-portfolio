@@ -27,6 +27,23 @@ import type { TopLanguage } from "./skills";
 /** Product name, used in `siteName`, structured data and social cards. */
 export const SITE_NAME = "Git-to-Portfolio";
 
+/**
+ * The brand as people type it into a search box.
+ *
+ * The drawn logotype is hyphenated ("Git-to-Portfolio"), but the query this
+ * site is found by is not: search engines tokenize on the hyphen, so the title
+ * and the hero carry the unhyphenated form the reader actually searched for,
+ * while everything that identifies the mark visually keeps the hyphen.
+ */
+export const SITE_NAME_QUERY = "Git to Portfolio";
+
+/**
+ * Who builds the site. Named in `authors`/`creator` metadata and in the
+ * structured data so the product has an accountable human behind it rather
+ * than an unattributed anonymous deployment.
+ */
+export const SITE_AUTHOR = "Kcguner";
+
 /** Intrinsic size of every generated social card, shared by all four locales. */
 export const SOCIAL_IMAGE_SIZE = { width: 1200, height: 630 } as const;
 
@@ -224,6 +241,10 @@ export function getSiteJsonLd(locale: Locale): JsonLdNode {
         // is the whole pitch, so it is stated as a free offer rather than left
         // for a crawler to guess.
         offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
+        // The three visible steps, reused as the feature list: the markup
+        // describes what the page shows rather than a separate sales list.
+        featureList: dictionary.home.steps.map((step) => step.title),
+        creator: { "@type": "Person", name: SITE_AUTHOR, url: repoUrl },
         isPartOf: { "@id": `${siteUrl}/#website` },
       },
     ],
