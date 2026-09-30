@@ -15,6 +15,7 @@ import RootLayout, {
   metadata as rootMetadata,
 } from "../../app/layout";
 import { LOCALES, LOCALE_TAGS } from "../../lib/i18n";
+import { SITE_AUTHOR } from "../../lib/seo";
 
 function setLocaleHeader(value: string | null) {
   headerMocks.headers.mockResolvedValue({
@@ -78,9 +79,14 @@ describe("root layout", () => {
     // The layout's `metadata` export cannot read the request, so it describes
     // Turkish and the two routes replace it per language.
     expect(rootMetadata.description).toBe(
-      "GitHub profilinden otomatik, sade ve yazdırılabilir bir geliştirici portföyü oluştur.",
+      "GitHub kullanıcı adını gir, Git to Portfolio ile saniyeler içinde sade, yazdırılabilir bir geliştirici portföyü oluştur. Ücretsiz, kurulum yok, hesap yok.",
     );
     expect(rootMetadata.keywords).toEqual(expect.arrayContaining(["GitHub portföy"]));
+    // The product is attributable: a named author that links to the source.
+    expect(rootMetadata.authors).toEqual([
+      { name: SITE_AUTHOR, url: "https://github.com/Kcguner/git-to-portfolio" },
+    ]);
+    expect(rootMetadata.creator).toBe(SITE_AUTHOR);
     expect(rootMetadata.alternates?.canonical).toBe("https://git-to-portfolio.vercel.app");
     expect(Object.keys(rootMetadata.alternates?.languages ?? {})).toEqual([
       ...LOCALES.map((locale) => LOCALE_TAGS[locale]),

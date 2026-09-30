@@ -23,9 +23,16 @@ import {
   dictionaries,
 } from "../../lib/i18n";
 import { EXAMPLES } from "../../lib/examples";
+import { SITE_NAME, SITE_NAME_QUERY } from "../../lib/seo";
 import { getSiteUrl } from "../../lib/site";
 
 const originalSiteUrl = process.env.SITE_URL;
+
+/** Renders a page element to the markup a crawler would receive. */
+async function renderPage(element: Awaited<ReturnType<typeof HomePage>>): Promise<string> {
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  return renderToStaticMarkup(element);
+}
 
 function restoreEnv(name: string, value: string | undefined) {
   if (value === undefined) delete process.env[name];
@@ -120,10 +127,15 @@ describe("home page", () => {
   it("builds localized home canonical, hreflang and social metadata", async () => {
     const metadata = await HomeMetadata({ searchParams: Promise.resolve({ lang: "de" }) });
 
-    expect(metadata.title).toBe("Git-to-Portfolio");
-    expect(metadata.description).toBe(
-      "Erstelle automatisch ein einfaches, druckbares Entwicklerportfolio aus einem GitHub-Profil."
-    );
+    // The home page owns its full title: the brand plus what it does, in the
+    // words a search query uses, and never wrapped in the layout's
+    // "| Git-to-Portfolio" template.
+    expect(metadata.title).toEqual({
+      absolute: dictionaries.de.metadata.homeTitle,
+    });
+    expect((metadata.title as { absolute: string }).absolute).not.toContain(SITE_NAME);
+    expect((metadata.title as { absolute: string }).absolute).toContain("Git to Portfolio");
+    expect(metadata.description).toBe(dictionaries.de.metadata.homeDescription);
     expect(metadata.keywords).toEqual(dictionaries.de.metadata.homeKeywords);
     expect(metadata.alternates).toEqual({
       canonical: "https://git-to-portfolio.vercel.app/?lang=de",
@@ -173,6 +185,42 @@ describe("home page", () => {
         OPEN_GRAPH_LOCALES[locale],
       );
       expect(metadata.keywords).toEqual(getDictionary(locale).metadata.homeKeywords);
+    }
+  });
+
+  // The site is found by the brand name people type into a search box, so the
+  // unhyphenated form has to be in the title of every language. The hyphenated
+  // logotype is a drawing decision and is not what gets searched.
+  it("puts the queried brand spelling in every language's title and subheading", async () => {
+    for (const locale of LOCALES) {
+      const metadata = await HomeMetadata({
+        searchParams: Promise.resolve({ lang: locale }),
+      });
+      const title = (metadata.title as { absolute: string }).absolute;
+      const { homeTitle, homeDescription, homeKeywords } = getDictionary(locale).metadata;
+      const { heroBefore, heroHighlight, heroAfter } = getDictionary(locale).home;
+
+      expect(title).toBe(homeTitle);
+      expect(title).toContain(SITE_NAME_QUERY);
+      // Long enough to say what it does, short enough not to be truncated.
+      expect(title.length).toBeGreaterThan(25);
+      expect(title.length).toBeLessThanOrEqual(70);
+
+      // Meta descriptions are truncated past ~160 characters.
+      expect(homeDescription.length).toBeGreaterThan(70);
+      expect(homeDescription.length).toBeLessThanOrEqual(160);
+
+      expect(homeKeywords[0]).toBe(SITE_NAME_QUERY.toLowerCase());
+
+      // The hero is the page's subheading, so the same phrase appears in the
+      // rendered body as well as in the metadata.
+      const html = await renderPage(
+        await HomePage({ searchParams: Promise.resolve({ lang: locale }) }),
+      );
+      expect(html).toContain(`<h2`);
+      expect(html).toContain(`<h1`);
+      expect(`${heroBefore}${heroHighlight}${heroAfter}`).toContain(SITE_NAME_QUERY);
+      expect(html).toContain(dictionaries[locale].home.heroHighlight);
     }
   });
 

@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { getDictionary } from "@/lib/i18n";
 import { getLocaleFromHeaderValue, LOCALE_HEADER } from "@/lib/locale-negotiation";
-import { getNoIndexMetadata } from "@/lib/seo";
+import { getNoIndexMetadata, SITE_NAME } from "@/lib/seo";
 import NotFoundView from "@/components/NotFoundView";
 
 // `not-found.tsx` receives neither params nor searchParams, so the locale and
@@ -19,7 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const dictionary = getDictionary(locale);
 
   return getNoIndexMetadata(locale, {
-    title: `${dictionary.notFound.pageTitle} | ${dictionary.metadata.homeTitle}`,
+    title: `${dictionary.notFound.pageTitle} | ${SITE_NAME}`,
     description: dictionary.notFound.pageDescription,
   });
 }

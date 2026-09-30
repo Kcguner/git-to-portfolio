@@ -29,6 +29,7 @@ import {
   INDEXABLE_ROBOTS,
   NO_INDEX_ROBOTS,
   serializeJsonLd,
+  SITE_AUTHOR,
   SITE_NAME,
   SOCIAL_IMAGE_SIZE,
 } from "../../lib/seo";
@@ -218,6 +219,28 @@ describe("structured data", () => {
         expect(node.description).toBe(getDictionary(locale).metadata.homeDescription);
         expect(node.inLanguage).toBe(LOCALE_TAGS[locale]);
       }
+    }
+  });
+
+  it("names an author and reuses the visible steps as the feature list", () => {
+    for (const locale of LOCALES) {
+      const graph = (getSiteJsonLd(locale)["@graph"] ?? []) as Array<Record<string, unknown>>;
+      const app = graph.find((node) => node["@type"] === "WebApplication") as Record<
+        string,
+        unknown
+      >;
+
+      // An unattributed deployment on a shared subdomain is the one thing a
+      // search engine has least reason to trust, so the author is named.
+      expect(app.creator).toEqual({
+        "@type": "Person",
+        name: SITE_AUTHOR,
+        url: "https://github.com/Kcguner/git-to-portfolio",
+      });
+      // The feature list is the steps the page renders, not a separate one.
+      expect(app.featureList).toEqual(
+        getDictionary(locale).home.steps.map((step) => step.title),
+      );
     }
   });
 

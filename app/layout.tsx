@@ -11,9 +11,10 @@ import {
   getAbsoluteLocaleAlternates,
   getSiteJsonLd,
   INDEXABLE_ROBOTS,
+  SITE_AUTHOR,
   SITE_NAME,
 } from "@/lib/seo";
-import { getSiteUrl } from "@/lib/site";
+import { getGitHubRepoUrl, getSiteUrl } from "@/lib/site";
 import { THEME_COOKIE, THEME_COLORS, type Theme } from "@/lib/theme";
 import "./fonts.scss";
 import "./globals.css";
@@ -36,6 +37,11 @@ async function getTheme(): Promise<Theme> {
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  // A named, linkable author. On a bare subdomain the site's only off-page
+  // identity is its repository, so the authorship is stated in metadata and
+  // repeated in the JSON-LD rather than left for a crawler to infer.
+  authors: [{ name: SITE_AUTHOR, url: getGitHubRepoUrl() }],
+  creator: SITE_AUTHOR,
   alternates: {
     canonical: siteUrl,
     languages: getAbsoluteLocaleAlternates("/"),
