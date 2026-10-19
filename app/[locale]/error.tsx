@@ -1,15 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import {
-  DEFAULT_LOCALE,
-  getDictionary,
-  getLocaleFromQueryValues,
-  withLocale,
-  type Locale,
-} from '@/lib/i18n';
+import { useParams } from 'next/navigation';
+import { DEFAULT_LOCALE, isLocale } from '@/lib/i18n/consts';
+import { ERROR_MESSAGES } from '@/lib/i18n/error';
+import type { Locale } from '@/lib/i18n/types';
 
 type Props = {
   error: Error & { digest?: string };
@@ -21,26 +16,23 @@ export default function Error({ error, retry }: Props) {
   // güvenli, sabit bir mesaj göster; ayrıntıyı server loglarında tut.
   void error;
 
-  // useSearchParams needs a Suspense boundary so the route can be statically
-  // rendered in the future. The fallback is deliberately locale-independent
-  // (the default dictionary) because no search params are readable from a
-  // boundary that is still suspended.
-  return (
-    <Suspense fallback={<ErrorView locale={DEFAULT_LOCALE} retry={retry} />}>
-      <LocalizedErrorView retry={retry} />
-    </Suspense>
-  );
-}
-
-function LocalizedErrorView({ retry }: { retry: () => void }) {
-  const searchParams = useSearchParams();
-  const locale = getLocaleFromQueryValues(searchParams.getAll('lang'));
+  // The error boundary is a Client Component, so it cannot read the root
+  // parameter the way the server components do — `next/root-params` is
+  // server-only. The locale is a path segment instead, and `useParams` is the
+  // client-side view of the very same value. No `useSearchParams` and no
+  // Suspense boundary are needed any more: a path segment is readable from
+  // the router state, not from the query string.
+  const params = useParams<{ locale: string }>();
+  const locale: Locale = isLocale(params?.locale) ? params.locale : DEFAULT_LOCALE;
 
   return <ErrorView locale={locale} retry={retry} />;
 }
 
 function ErrorView({ locale, retry }: { locale: Locale; retry: () => void }) {
-  const dictionary = getDictionary(locale).error;
+  // A global error boundary is a Client Component with no server parent, so
+  // there is no server render that could hand it the copy as props. It reads
+  // the error slice instead — five sentences per language, and nothing else.
+  const dictionary = ERROR_MESSAGES[locale];
 
   return (
     <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
@@ -77,7 +69,7 @@ function ErrorView({ locale, retry }: { locale: Locale; retry: () => void }) {
             <span className="relative z-10">{dictionary.retry}</span>
           </button>
           <Link
-            href={withLocale('/', locale)}
+            href={`/${locale}`}
             className="pill-btn inline-flex items-center px-6 py-3 font-semibold text-text-primary"
           >
             {dictionary.home}

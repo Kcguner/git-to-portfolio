@@ -1,203 +1,136 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { NextRequest } from "next/server";
 
-import { LOCALE_HEADER } from "../lib/locale-negotiation";
-
-type NextResponseInit = {
-  request: { headers: Headers };
-};
-
-type NextRequestLike = {
-  url: string;
-  headers: Headers;
-  nextUrl: { searchParams: URLSearchParams };
-};
-
-const nextServerMocks = vi.hoisted(() => ({
-  calls: [] as NextResponseInit[],
-  reset: () => {
-    nextServerMocks.calls.length = 0;
-  },
-}));
-
-vi.mock("next/server", () => ({
-  NextResponse: {
-    next(init: NextResponseInit) {
-      nextServerMocks.calls.push(init);
-      return {
-        headers: new Headers(),
-      };
-    },
-  },
-}));
+import { SITE_LOCALE_COOKIE } from "../lib/locale-negotiation";
 
 const { config, proxy } = await import("../proxy.js");
 
-function createRequest(path: string, headers: Record<string, string> = {}) {
-  const parsed = new URL(path, "https://portfolio.example.test");
-  const request: NextRequestLike = {
-    url: parsed.toString(),
-    headers: new Headers(headers),
-    nextUrl: { searchParams: parsed.searchParams },
-  };
+type ProxyOptions = {
+  /** Request headers, e.g. `accept-language`. */
+  headers?: Record<string, string>;
+  /** The raw `Cookie` header, e.g. `site-locale=es`. */
+  cookie?: string;
+};
 
-  return request;
+const ORIGIN = "https://portfolio.example.test";
+
+function createRequest(path: string, options: ProxyOptions = {}) {
+  const url = new URL(path, ORIGIN);
+  const headers = new Headers(options.headers);
+
+  if (options.cookie !== undefined) headers.set("cookie", options.cookie);
+
+  return new NextRequest(url, { headers });
 }
 
-function forwardedHeaders(): Headers {
-  expect(nextServerMocks.calls).toHaveLength(1);
-  return nextServerMocks.calls[0].request.headers;
+function runProxy(path = "/", options: ProxyOptions = {}) {
+  const request = createRequest(path, options);
+  const response = proxy(request);
+
+  return { request, response };
 }
 
-function runProxy(path: string, headers: Record<string, string> = {}) {
-  nextServerMocks.reset();
-  const request = createRequest(path, headers);
-  const response = proxy(request) as { headers: Headers };
+/** The path part of the `Location` header, e.g. `/en` out of a full URL. */
+function locationPathname(response: { headers: Headers }): string | null {
+  const location = response.headers.get("location");
 
-  return { request, response, forwarded: forwardedHeaders() };
+  return location === null ? null : new URL(location).pathname;
 }
 
 describe("proxy", () => {
-  beforeEach(() => {
-    nextServerMocks.reset();
+  it("redirects the bare root to the negotiated locale", () => {
+    const { response } = runProxy("/", { headers: { "accept-language": "en" } });
+
+    expect(response.status).toBe(302);
+    expect(locationPathname(response)).toBe("/en");
+    expect(new URL(response.headers.get("location") ?? "").origin).toBe(ORIGIN);
   });
 
-  it("sets a Content-Security-Policy request header with a nonce", () => {
-    const { forwarded, response } = runProxy("/torvalds");
-
-    const policy = forwarded.get("Content-Security-Policy");
-    expect(policy).toBeTruthy();
-    expect(policy).toContain("default-src 'self'");
-    expect(policy).toContain("script-src 'self' 'nonce-");
-    expect(policy).toContain("'strict-dynamic'");
-    expect(policy).toContain("style-src-attr 'unsafe-inline'");
-    expect(policy).toContain("frame-ancestors 'none'");
-    expect(policy).toContain("object-src 'none'");
-    expect(policy).toContain("base-uri 'self'");
-    expect(policy).toContain("form-action 'self'");
-    expect(policy).not.toContain("unsafe-eval");
-
-    const nonce = forwarded.get("x-nonce");
-    expect(nonce).toBeTruthy();
-    expect(policy).toContain(`'nonce-${nonce}'`);
-
-    expect(response.headers.get("Content-Security-Policy")).toBe(policy);
-  });
-
-  it("keeps the original request headers", () => {
-    const { forwarded } = runProxy("/", { "user-agent": "vitest" });
-
-    expect(forwarded.get("user-agent")).toBe("vitest");
-  });
-
-  it("resolves the locale from an explicit lang query value", () => {
-    expect(runProxy("/torvalds?lang=en").forwarded.get(LOCALE_HEADER)).toBe("en");
-    expect(runProxy("/torvalds?lang=de").forwarded.get(LOCALE_HEADER)).toBe("de");
-    expect(runProxy("/torvalds?lang=es").forwarded.get(LOCALE_HEADER)).toBe("es");
-    expect(runProxy("/torvalds?lang=tr").forwarded.get(LOCALE_HEADER)).toBe("tr");
-  });
-
-  it("keeps other query parameters intact", () => {
-    const { request } = runProxy("/torvalds?tab=repos&lang=en#skills");
-
-    expect(request.nextUrl.searchParams.get("tab")).toBe("repos");
-    expect(request.nextUrl.searchParams.get("lang")).toBe("en");
-  });
-
-  it("prefers the query value over Accept-Language", () => {
-    const { forwarded } = runProxy("/torvalds?lang=es", {
-      "accept-language": "de-DE,de;q=0.9",
+  it("negotiates a regional language tag", () => {
+    const { response } = runProxy("/", {
+      headers: { "accept-language": "de-DE,de;q=0.9" },
     });
 
-    expect(forwarded.get(LOCALE_HEADER)).toBe("es");
-  });
-
-  it("negotiates Accept-Language when there is no lang query", () => {
-    expect(
-      runProxy("/", { "accept-language": "en-GB,en;q=0.9" }).forwarded.get(LOCALE_HEADER)
-    ).toBe("en");
-    expect(
-      runProxy("/torvalds", { "accept-language": "de;q=0.8,es;q=0.9" }).forwarded.get(
-        LOCALE_HEADER
-      )
-    ).toBe("es");
+    expect(response.status).toBe(302);
+    expect(locationPathname(response)).toBe("/de");
   });
 
   it("falls back to the default locale without a usable Accept-Language", () => {
-    expect(runProxy("/").forwarded.get(LOCALE_HEADER)).toBe("tr");
+    expect(locationPathname(runProxy("/").response)).toBe("/tr");
     expect(
-      runProxy("/", { "accept-language": "fr-FR,fr" }).forwarded.get(LOCALE_HEADER)
-    ).toBe("tr");
+      locationPathname(
+        runProxy("/", { headers: { "accept-language": "fr-FR,fr" } }).response
+      )
+    ).toBe("/tr");
     expect(
-      runProxy("/", { "accept-language": "" }).forwarded.get(LOCALE_HEADER)
-    ).toBe("tr");
+      locationPathname(runProxy("/", { headers: { "accept-language": "" } }).response)
+    ).toBe("/tr");
   });
 
-  it("defaults for a lang query that is not a single supported locale", () => {
-    expect(
-      runProxy("/torvalds?lang=fr", { "accept-language": "de" }).forwarded.get(LOCALE_HEADER)
-    ).toBe("tr");
-    expect(
-      runProxy("/torvalds?lang=en&lang=de").forwarded.get(LOCALE_HEADER)
-    ).toBe("tr");
+  it("prefers the site-locale cookie over Accept-Language", () => {
+    const { response } = runProxy("/", {
+      headers: { "accept-language": "en" },
+      cookie: `${SITE_LOCALE_COOKIE}=es`,
+    });
+
+    expect(response.status).toBe(302);
+    expect(locationPathname(response)).toBe("/es");
   });
 
-  it("overrides a client-supplied locale header", () => {
-    expect(
-      runProxy("/torvalds?lang=de", { [LOCALE_HEADER]: "es" }).forwarded.get(LOCALE_HEADER)
-    ).toBe("de");
-    expect(
-      runProxy("/torvalds", {
-        [LOCALE_HEADER]: "fr",
-        "accept-language": "en",
-      }).forwarded.get(LOCALE_HEADER)
-    ).toBe("en");
-    expect(
-      runProxy("/torvalds", { [LOCALE_HEADER]: "tr" }).forwarded.get(LOCALE_HEADER)
-    ).toBe("tr");
+  it("ignores an unusable site-locale cookie", () => {
+    const { response } = runProxy("/", {
+      headers: { "accept-language": "de" },
+      cookie: `${SITE_LOCALE_COOKIE}=xx`,
+    });
+
+    expect(response.status).toBe(302);
+    expect(locationPathname(response)).toBe("/de");
   });
 
-  it("always sets the locale header, even for the default locale", () => {
-    const { forwarded } = runProxy("/torvalds");
+  it("remembers the resolved locale in the site-locale cookie", () => {
+    const { response } = runProxy("/", {
+      headers: { "accept-language": "en" },
+    });
 
-    expect(forwarded.has(LOCALE_HEADER)).toBe(true);
-    expect(forwarded.get(LOCALE_HEADER)).toBe("tr");
-    // A spoofed value must be replaced, not appended to.
-    expect(forwarded.get(LOCALE_HEADER)).not.toBe("en,de");
+    const setCookie = response.headers.get("set-cookie") ?? "";
+
+    expect(setCookie).toContain(`${SITE_LOCALE_COOKIE}=en`);
+    expect(setCookie).toContain("Path=/");
+    expect(setCookie).toMatch(/Max-Age=31536000/i);
+    expect(setCookie).toMatch(/SameSite=lax/i);
+    // The language switcher is a client component and reads the cookie.
+    expect(setCookie).not.toContain("HttpOnly");
   });
 
-  it("never forwards the locale header to the client", () => {
-    const { response } = runProxy("/torvalds?lang=de");
+  it("sets no Content-Security-Policy and mints no nonce", () => {
+    const { request, response } = runProxy("/", {
+      headers: { "accept-language": "en" },
+    });
 
-    expect(response.headers.has(LOCALE_HEADER)).toBe(false);
+    expect(response.headers.get("content-security-policy")).toBeNull();
+    expect(response.headers.get("x-nonce")).toBeNull();
+    // The request headers are left alone: no locale header, no policy.
+    expect(request.headers.get("x-nonce")).toBeNull();
+    expect(request.headers.get("content-security-policy")).toBeNull();
+    expect(request.headers.get("x-site-locale")).toBeNull();
+    // Next.js only sets this header when the Proxy rewrites request headers.
+    expect(response.headers.get("x-middleware-override-headers")).toBeNull();
   });
 
-  it("returns a NextResponse.next continuation", () => {
-    const { response } = runProxy("/torvalds");
+  it("redirects to a locale path and never to itself", () => {
+    for (const locale of ["tr", "en", "de", "es"]) {
+      const { response } = runProxy("/", { cookie: `${SITE_LOCALE_COOKIE}=${locale}` });
+      const pathname = locationPathname(response);
 
-    expect(response.headers).toBeInstanceOf(Headers);
-    expect(nextServerMocks.calls[0].request.headers).toBeInstanceOf(Headers);
+      expect(pathname).toBe(`/${locale}`);
+      // A redirect to `/` would be a loop: the Proxy would run again.
+      expect(pathname).not.toBe("/");
+    }
   });
 });
 
 describe("proxy matcher", () => {
-  it("excludes api, static assets, image optimization and the app icon", () => {
-    const [matcher] = config.matcher;
-    const source = matcher.source as string;
-
-    expect(source).toContain("api");
-    expect(source).toContain("_next/static");
-    expect(source).toContain("_next/image");
-    expect(source).toContain("icon.svg");
-    // There is no favicon.ico in this project; app/icon.svg is the icon.
-    expect(source).not.toContain("favicon.ico");
-  });
-
-  it("keeps the prefetch exclusions", () => {
-    const [matcher] = config.matcher;
-
-    expect(matcher.missing).toEqual([
-      { type: "header", key: "next-router-prefetch" },
-      { type: "header", key: "purpose", value: "prefetch" },
-    ]);
+  it("matches the bare root only", () => {
+    expect(config.matcher).toEqual(["/"]);
   });
 });

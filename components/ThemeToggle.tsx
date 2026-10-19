@@ -1,19 +1,27 @@
 'use client';
 
-import { getDictionary, type Locale } from '@/lib/i18n';
+import type { ThemeStrings } from '@/lib/i18n/types';
 import { paintThemeColor, themeCookie, type Theme } from '@/lib/theme';
 
 type Props = {
-  locale: Locale;
+  /**
+   * The theme copy for the current locale, resolved on the server. The client
+   * bundle never carries a dictionary: it receives exactly these strings.
+   */
+  theme: ThemeStrings;
 };
 
 /**
  * The toggle flips the `dark` class on <html> and remembers the choice in a
- * cookie, which is what the root layout reads to render the right palette on
- * the server (`html.light` / `html.dark`).
+ * cookie, which is the source of truth for the theme.
  *
- * No effect and no client state: the server already put the correct class on
- * <html>, so both states are rendered and Tailwind's `dark:` variants pick
+ * The server always renders the default night palette: the theme is not read
+ * from the cookie on the server any more. A small inline script in the
+ * document head applies the stored theme before the first paint, so the class
+ * on <html> is the thing that decides which palette the visitor sees.
+ *
+ * No effect and no client state: that script has already put the chosen class
+ * on <html>, so both states are rendered and Tailwind's `dark:` variants pick
  * the visible one. The inactive branch is `display: none`, which also removes
  * it from the accessibility tree, so the button is always named by exactly the
  * label that describes what pressing it will do.
@@ -24,9 +32,7 @@ type Props = {
  * in that same branch already names the other palette, so the two disagree.
  * The icon has to name the same target as the label beside it.
  */
-export default function ThemeToggle({ locale }: Props) {
-  const dictionary = getDictionary(locale);
-
+export default function ThemeToggle({ theme }: Props) {
   function onClick() {
     const root = document.documentElement;
     const next: Theme = root.classList.contains('dark') ? 'light' : 'dark';
@@ -35,10 +41,12 @@ export default function ThemeToggle({ locale }: Props) {
     root.classList.add(next);
     document.cookie = themeCookie(next);
 
-    // The `theme-color` meta tag is resolved per request from the cookie, so
-    // without this the browser keeps painting its own chrome — the tab, the
-    // address bar, the overscroll area — in the palette the visitor just left
-    // until the next full load. That is half a toggle that looks broken.
+    // The server-rendered `theme-color` meta tag carries the default night
+    // colour, because the theme is no longer read from the cookie on the
+    // server. Without repainting it here the browser keeps painting its own
+    // chrome — the tab, the address bar, the overscroll area — in the palette
+    // the visitor just left until the next full load. That is half a toggle
+    // that looks broken.
     paintThemeColor(next);
   }
 
@@ -62,7 +70,7 @@ export default function ThemeToggle({ locale }: Props) {
         >
           <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
         </svg>
-        <span className="sr-only">{dictionary.theme.toNight}</span>
+        <span className="sr-only">{theme.toNight}</span>
       </span>
       {/* At night: the sun. */}
       <span className="hidden dark:block">
@@ -79,7 +87,7 @@ export default function ThemeToggle({ locale }: Props) {
           <circle cx="12" cy="12" r="4" />
           <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
         </svg>
-        <span className="sr-only">{dictionary.theme.toPaper}</span>
+        <span className="sr-only">{theme.toPaper}</span>
       </span>
     </button>
   );

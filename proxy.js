@@ -1,69 +1,54 @@
 import { NextResponse } from "next/server";
-import { LOCALE_HEADER, resolveRequestLocale } from "@/lib/locale-negotiation";
+import { SITE_LOCALE_COOKIE, resolveRequestLocale } from "@/lib/locale-negotiation";
 
+/**
+ * The Proxy answers the one address that cannot name a language: the bare
+ * `/`.
+ *
+ * The locale lives in the path (`/en/torvalds`), so every other URL already
+ * says which language it is and is served without any negotiation at all.
+ * `/` is the single exception: the Proxy resolves the visitor's language from
+ * their `site-locale` cookie and their `Accept-Language` header and answers
+ * with a temporary redirect to `/<locale>`.
+ *
+ * The redirect is a `302` and not a permanent one on purpose. The language a
+ * visitor reads in is a preference, not a permanent property of the URL, and
+ * the same visitor may well read the next page in another language. The
+ * choice is remembered in the `site-locale` cookie, so the root only has to
+ * guess once.
+ *
+ * The cookie is deliberately readable by scripts (`httpOnly: false`): the
+ * language switcher in the header is a client component and reads the cookie
+ * to keep itself in sync with the language the server chose.
+ *
+ * The security headers — including the static Content-Security-Policy — live
+ * in `next.config.js`. They used to be set here, with a nonce that was minted
+ * per request, but a nonce forces every page to be rendered per request and
+ * a document that is rendered per request cannot be cached.
+ */
 export function proxy(request) {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const isDevelopment = process.env.NODE_ENV === "development";
-  const policy = [
-    "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${
-      isDevelopment ? " 'unsafe-eval'" : ""
-    }`,
-    "script-src-attr 'none'",
-    isDevelopment
-      ? "style-src 'self' 'unsafe-inline'"
-      : `style-src 'self' 'nonce-${nonce}'`,
-    // ProfileCard dinamik dil yüzdesini style özniteliğiyle uygular.
-    "style-src-attr 'unsafe-inline'",
-    "img-src 'self' blob: data: https://avatars.githubusercontent.com",
-    "font-src 'self'",
-    `connect-src 'self'${isDevelopment ? " ws: wss:" : ""}`,
-    "worker-src 'self' blob:",
-    "manifest-src 'self'",
-    "media-src 'none'",
-    "object-src 'none'",
-    "frame-src 'none'",
-    "child-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
-  ].join("; ");
-
-  // Root layouts cannot read searchParams, so the effective locale is resolved
-  // here and handed to the server render through a request header. An explicit
-  // ?lang= wins over Accept-Language negotiation, which wins over the default.
-  const searchParams = request.nextUrl.searchParams;
   const locale = resolveRequestLocale({
-    lang: searchParams.has("lang") ? searchParams.getAll("lang") : undefined,
     acceptLanguage: request.headers.get("accept-language"),
+    cookie: request.cookies.get(SITE_LOCALE_COOKIE)?.value,
   });
 
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set("Content-Security-Policy", policy);
-  // Set unconditionally so a client-supplied value is always overwritten.
-  requestHeaders.set(LOCALE_HEADER, locale);
+  // The target is always `/<locale>` and never `/` itself, so the Proxy
+  // cannot redirect the root to itself.
+  const response = NextResponse.redirect(new URL("/" + locale, request.url), 302);
 
-  const response = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
+  response.cookies.set(SITE_LOCALE_COOKIE, locale, {
+    path: "/",
+    maxAge: 31536000,
+    sameSite: "lax",
+    httpOnly: false,
   });
-  response.headers.set("Content-Security-Policy", policy);
 
   return response;
 }
 
 export const config = {
-  matcher: [
-    {
-      // favicon.ico yok; projede app/icon.svg kullanılıyor.
-      source: "/((?!api|_next/static|_next/image|icon.svg).*)",
-      missing: [
-        { type: "header", key: "next-router-prefetch" },
-        { type: "header", key: "purpose", value: "prefetch" },
-      ],
-    },
-  ],
+  // Only the bare root needs a language, and the matcher is an exact path:
+  // `/tr`, `/en/torvalds` and every other localized URL never reach the
+  // Proxy at all.
+  matcher: ["/"],
 };

@@ -11,6 +11,44 @@ import {
   getTopRepos,
 } from '../../lib/github';
 
+/**
+ * A stand-in for Next's shared data cache.
+ *
+ * The real one needs a request or a render around it, which a unit test has
+ * neither of, so the cache is faked here: the same key, the same lifetime and
+ * the same rule that a failed lookup leaves no entry behind.
+ */
+const cacheState = vi.hoisted(() => ({
+  entries: new Map<string, { value: unknown; expiresAt: number }>(),
+  /** When set, the cache behaves as it does outside a Next request. */
+  unavailable: false,
+}));
+
+vi.mock('next/cache', () => ({
+  unstable_cache: (
+    callback: (...args: unknown[]) => Promise<unknown>,
+    keyParts: string[],
+    options?: { revalidate?: number }
+  ) => {
+    return async (...args: unknown[]) => {
+      if (cacheState.unavailable) {
+        throw new Error('Invariant: incrementalCache missing in unstable_cache');
+      }
+      const key = `${keyParts.join(',')}:${JSON.stringify(args)}`;
+      const entry = cacheState.entries.get(key);
+      if (entry && entry.expiresAt > Date.now()) return entry.value;
+      // A failed lookup throws before it can be stored, exactly as the real
+      // cache does: a rejection is never remembered.
+      const value = await callback(...args);
+      cacheState.entries.set(key, {
+        value,
+        expiresAt: Date.now() + (options?.revalidate ?? 0) * 1_000,
+      });
+      return value;
+    };
+  },
+}));
+
 const profile = {
   login: 'octocat',
   name: 'The Octocat',
@@ -89,6 +127,8 @@ describe('GitHub data layer', () => {
     fetchMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
     process.env.GITHUB_TOKEN = 'test-token';
+    cacheState.entries.clear();
+    cacheState.unavailable = false;
   });
 
   afterEach(() => {
@@ -157,6 +197,17 @@ describe('GitHub data layer', () => {
       const [, init] = fetchMock.mock.calls[0];
       expect(init).toMatchObject({ cache: 'no-store' });
       expect(init).not.toHaveProperty('next');
+    });
+
+    it('can ask for a shorter shared cache lifetime', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(profile));
+
+      await expect(getProfile('octocat', { revalidate: 60 })).resolves.toEqual(profile);
+
+      // A social card is drawn per share: its data is kept for a minute
+      // rather than for the hour the default asks for.
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init).toMatchObject({ next: { revalidate: 60 } });
     });
 
     it('rejects malformed runtime data as an upstream error', async () => {
@@ -342,7 +393,7 @@ describe('GitHub data layer', () => {
         type: 'owner',
         sort: 'pushed',
         direction: 'desc',
-        per_page: '100',
+        per_page: '30',
         page: '1',
       });
       expect(repos.map((item) => item.full_name)).toEqual([
@@ -363,10 +414,12 @@ describe('GitHub data layer', () => {
       await expect(getTopRepos('octocat', 1)).resolves.toHaveLength(1);
     });
 
-    it('asks for one full page regardless of the requested count', async () => {
+    it('asks for one ranking window regardless of the requested count', async () => {
       // The core API cannot sort by stars, so the page size is the ranking
       // window rather than the number of displayed cards. Asking for exactly
-      // `count` items would rank a partial window and return noise.
+      // `count` items would rank a partial window and return noise, and a
+      // hundred-repository window would download and validate ten times what
+      // the six cards need.
       fetchMock.mockImplementation(async () => reposResponse([]));
 
       await getTopRepos('octocat', 3);
@@ -377,7 +430,7 @@ describe('GitHub data layer', () => {
       const perPage = fetchMock.mock.calls.map(
         ([url]) => new URL(String(url)).searchParams.get('per_page')
       );
-      expect(perPage).toEqual(['100', '100', '100']);
+      expect(perPage).toEqual(['30', '30', '30']);
     });
 
     it('stops paging once a short page arrives', async () => {
@@ -707,6 +760,91 @@ describe('GitHub data layer', () => {
       const init = fetchMock.mock.calls[2]?.[1];
       expect(init).toMatchObject({ cache: 'no-store' });
       expect(init).not.toHaveProperty('next');
+    });
+
+    it('answers a second lookup from the shared cache', async () => {
+      // The pinned list is a GraphQL POST, which the fetch cache does not
+      // keep, so the shared data cache is the only thing between two views
+      // of the same profile and a second trip to GitHub.
+      fetchMock.mockResolvedValueOnce(pinnedResponse([pinnedRepo()]));
+
+      const first = await getPinnedRepos('octocat');
+      const second = await getPinnedRepos('octocat');
+
+      expect(first).toHaveLength(1);
+      expect(second).toEqual(first);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps one cached answer per profile', async () => {
+      fetchMock
+        .mockResolvedValueOnce(pinnedResponse([pinnedRepo()]))
+        .mockResolvedValueOnce(pinnedResponse([pinnedRepo({ databaseId: 12 })]));
+
+      await getPinnedRepos('octocat');
+      await getPinnedRepos('hubot');
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks again once the cached answer is older than its lifetime', async () => {
+      vi.useFakeTimers();
+      fetchMock.mockResolvedValue(pinnedResponse([pinnedRepo()]));
+
+      await getPinnedRepos('octocat');
+      vi.advanceTimersByTime(600_001);
+      await getPinnedRepos('octocat');
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('never caches a failed lookup', async () => {
+      const warn = silenceWarnings();
+      fetchMock
+        .mockResolvedValueOnce(new Response(null, { status: 401 }))
+        .mockResolvedValueOnce(pinnedResponse([pinnedRepo()]));
+
+      // A failure is not an answer: the next visitor retries it instead of
+      // inheriting a broken one.
+      await expect(getPinnedRepos('octocat')).resolves.toBeNull();
+      await expect(getPinnedRepos('octocat')).resolves.toHaveLength(1);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      // The failed attempt is still reported once, and the successful one is
+      // not a failure at all.
+      expect(warn).toHaveBeenCalledOnce();
+    });
+
+    it('shares one GraphQL call between two lookups that arrive together', async () => {
+      fetchMock.mockResolvedValue(pinnedResponse([pinnedRepo()]));
+
+      const [first, second] = await Promise.all([
+        getPinnedRepos('octocat'),
+        getPinnedRepos('octocat'),
+      ]);
+
+      expect(first).toHaveLength(1);
+      expect(second).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('still answers when there is no shared cache to use', async () => {
+      // Outside a Next request there is no data cache at all. The lookup has
+      // to keep working, it is simply not remembered.
+      cacheState.unavailable = true;
+      fetchMock.mockResolvedValueOnce(pinnedResponse([pinnedRepo()]));
+
+      await expect(getPinnedRepos('octocat')).resolves.toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not use the shared copy for a caller that brings its own options', async () => {
+      fetchMock.mockResolvedValue(pinnedResponse([pinnedRepo()]));
+
+      await getPinnedRepos('octocat');
+      await getPinnedRepos('octocat', { cache: 'no-store' });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 });

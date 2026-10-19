@@ -11,6 +11,7 @@
 import type { Metadata } from "next";
 import {
   DEFAULT_LOCALE,
+  getBasePathname,
   getDictionary,
   getLocaleAlternates,
   getProfileOpenGraphImagePath,
@@ -18,7 +19,7 @@ import {
   LOCALES,
   LOCALE_TAGS,
   OPEN_GRAPH_LOCALES,
-  withLocale,
+  withBaseLocale,
   type Locale,
 } from "./i18n";
 import { getGitHubRepoUrl, getSafeExternalHttpUrl, getSiteUrl } from "./site";
@@ -94,8 +95,10 @@ export function getAbsoluteUrl(pathname: string): string {
  * The hreflang cluster for a pathname as absolute URLs, `x-default` included.
  *
  * The sitemap protocol and the Metadata API both need absolute URLs, and the
- * locale query lives in the URL itself, so nothing here is resolvable by
+ * locale is a path segment of the URL itself, so nothing here is resolvable by
  * `metadataBase` at the sitemap level.
+ *
+ * `pathname` is the **base** path of the page, without a locale segment.
  */
 export function getAbsoluteLocaleAlternates(pathname: string): Record<string, string> {
   return Object.fromEntries(
@@ -106,17 +109,35 @@ export function getAbsoluteLocaleAlternates(pathname: string): Record<string, st
   );
 }
 
-/** `canonical` plus `alternates.languages` for one localized pathname. */
+/**
+ * `canonical` plus `alternates.languages` for one localized pathname.
+ *
+ * `pathname` is the **base** path of the page, without a locale segment: the
+ * canonical is `/${locale}${base}` and the cluster is the same four URLs no
+ * matter which language asks for it.
+ *
+ * The base path is derived with `getBasePathname()` first, so the canonical and
+ * the cluster are built from the same string and cannot disagree about it. A
+ * path that already carries a locale segment is accepted as well and the
+ * segment is removed exactly once.
+ *
+ * The locale is **added** to the base path, never substituted into it. That is
+ * what keeps the GitHub account called `en` — whose base path is `/en` — from
+ * being published as the English home: its canonical in Turkish is `/tr/en`,
+ * not `/tr`.
+ */
 export function getLocaleAlternatesMetadata(
   pathname: string,
   locale: Locale,
 ): { canonical: string; languages: Record<string, string> } {
+  const base = getBasePathname(pathname);
+
   return {
-    // Query strings are the only thing that can differ between two renderings
-    // of the same page here, so the canonical is the localized URL itself and
-    // never carries tracking or debug parameters.
-    canonical: getAbsoluteUrl(withLocale(pathname, locale)),
-    languages: getAbsoluteLocaleAlternates(pathname),
+    // The path segment is the only thing that can differ between two
+    // renderings of the same page here, so the canonical is the localized URL
+    // itself and never carries tracking or debug parameters.
+    canonical: getAbsoluteUrl(withBaseLocale(base, locale)),
+    languages: getAbsoluteLocaleAlternates(base),
   };
 }
 
@@ -138,9 +159,15 @@ export function getOpenGraphLocale(locale: Locale): string {
   return OPEN_GRAPH_LOCALES[locale];
 }
 
-/** File-based social card path for the home page, one static image per locale. */
+/**
+ * File-based social card path for the home page, one static image per locale.
+ *
+ * The card lives under the locale's own path (`/en/opengraph-image/en`) so
+ * that it is a separate, separately cacheable URL per language, exactly like
+ * the page that references it.
+ */
 export function getHomeOpenGraphImagePath(locale: Locale): string {
-  return `/opengraph-image/${locale}`;
+  return `/${locale}/opengraph-image/${locale}`;
 }
 
 /** A fully described social card, as the Metadata API accepts it. */
@@ -221,7 +248,7 @@ export function getSiteJsonLd(locale: Locale): JsonLdNode {
       {
         "@type": "WebSite",
         "@id": `${siteUrl}/#website`,
-        url: `${siteUrl}/`,
+        url: `${siteUrl}/${locale}`,
         name: SITE_NAME,
         description,
         inLanguage: LOCALE_TAGS[locale],
@@ -233,7 +260,7 @@ export function getSiteJsonLd(locale: Locale): JsonLdNode {
         "@id": `${siteUrl}/#app`,
         name: SITE_NAME,
         description,
-        url: `${siteUrl}/`,
+        url: `${siteUrl}/${locale}`,
         inLanguage: LOCALE_TAGS[locale],
         applicationCategory: "DeveloperApplication",
         operatingSystem: "Any",
@@ -278,7 +305,15 @@ export function getHowToJsonLd(locale: Locale): JsonLdNode {
 
 export type ProfileJsonLdInput = {
   locale: Locale;
-  /** The profile's pathname, without any locale query. */
+  /**
+   * The profile's **base** pathname: the username path without a locale
+   * segment and without a query (`/octocat`).
+   *
+   * It is the base path and not the localized one because the base path is
+   * the unambiguous form: the account called `en` has the base path `/en` and
+   * the localized path `/en/en`, and only the base path says which of the two
+   * the caller meant.
+   */
   pathname: string;
   /** Display name, falling back to the login when the account has no name. */
   displayName: string;
@@ -322,14 +357,20 @@ export function getProfileJsonLd({
   topLanguages,
 }: ProfileJsonLdInput): JsonLdNode {
   const sameAs = getProfileSameAs(profileUrl, blogUrl, twitterUsername);
-  // The entity id is deliberately the locale-free URL: the four languages are
-  // four renderings of one person, and giving each its own `@id` would tell a
-  // knowledge graph there are four different people.
-  const personId = `${getAbsoluteUrl(pathname)}#person`;
+  // The entity id has to be stable across the four languages: they are four
+  // renderings of one person, and giving each its own `@id` would tell a
+  // knowledge graph there are four different people. Every localized URL
+  // carries a locale segment now, so the default locale's URL is the one
+  // stable, canonical address of the person.
+  const entityUrl = getAbsoluteUrl(getProfilePathname(login, DEFAULT_LOCALE));
+  const personId = `${entityUrl}#person`;
   const node: JsonLdNode = {
     "@context": "https://schema.org",
     "@type": "ProfilePage",
-    "@id": `${getAbsoluteUrl(pathname)}#webpage`,
+    "@id": `${entityUrl}#webpage`,
+    // The page's own URL, in the language it was asked for. `pathname` is the
+    // base path, and the locale is added to it, so the block of the account
+    // called `en` points at `/tr/en` rather than at the Turkish home.
     url: getLocaleAlternatesMetadata(pathname, locale).canonical,
     name: getDictionary(locale).metadata.portfolioTitle(displayName),
     description,
@@ -438,7 +479,10 @@ export function getProfileSameAs(
   ].filter((url): url is string => Boolean(url));
 }
 
-/** The pathname of a profile page, re-exported so routes build URLs in one place. */
+/**
+ * The path helpers of a profile page, re-exported so routes build URLs in one
+ * place. Both take the locale explicitly: a profile URL is `/<locale>/<user>`.
+ */
 export { getProfileOpenGraphImagePath, getProfilePathname };
 
 /**

@@ -1,39 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const headerMocks = vi.hoisted(() => ({
-  headers: vi.fn(),
-  cookies: vi.fn(),
+const navigationMocks = vi.hoisted(() => ({
+  notFound: vi.fn(() => {
+    throw new Error("NEXT_NOT_FOUND");
+  }),
 }));
 
-vi.mock("next/headers", () => ({
-  headers: headerMocks.headers,
-  cookies: headerMocks.cookies,
+vi.mock("next/navigation", () => ({
+  notFound: navigationMocks.notFound,
 }));
 
-import RootLayout, {
-  generateViewport,
-  metadata as rootMetadata,
-} from "../../app/layout";
+import LocaleLayout, {
+  generateMetadata,
+  generateStaticParams,
+  viewport,
+} from "../../app/[locale]/layout";
+import { THEME_SCRIPT } from "../../app/theme-script";
 import { LOCALES, LOCALE_TAGS } from "../../lib/i18n";
 import { SITE_AUTHOR } from "../../lib/seo";
+import { THEME_COLORS } from "../../lib/theme";
 
-function setLocaleHeader(value: string | null) {
-  headerMocks.headers.mockResolvedValue({
-    get: (name: string) => (name === "x-site-locale" ? value : null),
-  });
+/** The params of a localized document. */
+function localeParams(locale: string) {
+  return Promise.resolve({ locale });
 }
 
-function setThemeCookie(value: string | null) {
-  // The shape `cookies()` resolves to is narrower than a Map: a `get` that
-  // answers with the stored cookie, and nothing else is used here.
-  headerMocks.cookies.mockResolvedValue({
-    get: (name: string) => (name === "theme" && value ? { value } : undefined),
-  });
-}
-
-async function renderLayout() {
+async function renderLayout(locale: string) {
   const { renderToStaticMarkup } = await import("react-dom/server");
-  return renderToStaticMarkup(await RootLayout({ children: null }));
+  return renderToStaticMarkup(
+    await LocaleLayout({ children: null, params: localeParams(locale) }),
+  );
 }
 
 function readHtmlClass(html: string): string | undefined {
@@ -48,86 +44,128 @@ function readJsonLd(html: string): { '@graph': Array<Record<string, unknown>> } 
 
 describe("root layout", () => {
   beforeEach(() => {
-    headerMocks.headers.mockReset();
-    headerMocks.cookies.mockReset();
-    setLocaleHeader(null);
-    setThemeCookie(null);
+    navigationMocks.notFound.mockClear();
   });
 
-  it("describes the site in the language of the request", async () => {
+  it("describes the site in the language of the path segment", async () => {
     for (const locale of LOCALES) {
-      setLocaleHeader(locale);
-      const graph = readJsonLd(await renderLayout())["@graph"];
+      const html = await renderLayout(locale);
+      const graph = readJsonLd(html)["@graph"];
 
       // The site, not the page: one WebSite and one WebApplication, and both
-      // carry the language a reader actually asked for.
+      // carry the language of the document they are rendered into.
       expect(graph.map((node) => node["@type"])).toEqual(["WebSite", "WebApplication"]);
       for (const node of graph) {
         expect(node.inLanguage).toBe(LOCALE_TAGS[locale]);
+        // The site lives under the locale's own path.
+        expect(node.url).toBe(`https://git-to-portfolio.vercel.app/${locale}`);
       }
+
+      // The document says the same thing in its `lang` attribute.
+      expect(html).toContain(`<html lang="${locale}"`);
     }
   });
 
-  it("falls back to Turkish when the locale header is unusable", async () => {
-    setLocaleHeader("xx");
-    const graph = readJsonLd(await renderLayout())["@graph"];
+  it("answers an unsupported locale segment with a not-found", async () => {
+    // The segment is a build-time value now, so a language the site does not
+    // serve is not a page of this site at all.
+    await expect(renderLayout("xx")).rejects.toThrow("NEXT_NOT_FOUND");
 
-    expect(graph[0]?.inLanguage).toBe("tr-TR");
+    expect(navigationMocks.notFound).toHaveBeenCalledOnce();
   });
 
-  it("keeps the static fallback metadata in the default language", () => {
-    // The layout's `metadata` export cannot read the request, so it describes
-    // Turkish and the two routes replace it per language.
-    expect(rootMetadata.description).toBe(
+  it("prerenders the four locales it serves", async () => {
+    // The root layout lives under a dynamic segment, so the four documents
+    // have to be named for the build.
+    expect(await generateStaticParams()).toEqual([
+      { locale: "tr" },
+      { locale: "en" },
+      { locale: "de" },
+      { locale: "es" },
+    ]);
+  });
+
+  it("keeps the shared fallback metadata in the default language", async () => {
+    // The layout's metadata is the fallback for every page below it, and it
+    // describes the default locale's home: the only URL that is guaranteed to
+    // exist in every language. The pages below replace it per language.
+    const metadata = await generateMetadata({
+      params: localeParams("tr"),
+      children: null,
+    });
+
+    expect(metadata.description).toBe(
       "GitHub kullanıcı adını gir, Git to Portfolio ile saniyeler içinde sade, yazdırılabilir bir geliştirici portföyü oluştur. Ücretsiz, kurulum yok, hesap yok.",
     );
-    expect(rootMetadata.keywords).toEqual(expect.arrayContaining(["GitHub portföy"]));
+    expect(metadata.keywords).toEqual(expect.arrayContaining(["GitHub portföy"]));
     // The product is attributable: a named author that links to the source.
-    expect(rootMetadata.authors).toEqual([
+    expect(metadata.authors).toEqual([
       { name: SITE_AUTHOR, url: "https://github.com/Kcguner/git-to-portfolio" },
     ]);
-    expect(rootMetadata.creator).toBe(SITE_AUTHOR);
-    expect(rootMetadata.alternates?.canonical).toBe("https://git-to-portfolio.vercel.app");
-    expect(Object.keys(rootMetadata.alternates?.languages ?? {})).toEqual([
-      ...LOCALES.map((locale) => LOCALE_TAGS[locale]),
-      "x-default",
+    expect(metadata.creator).toBe(SITE_AUTHOR);
+    expect(metadata.alternates?.canonical).toBe("https://git-to-portfolio.vercel.app/tr");
+    expect(metadata.alternates?.languages).toEqual({
+      "tr-TR": "https://git-to-portfolio.vercel.app/tr",
+      "en-US": "https://git-to-portfolio.vercel.app/en",
+      "de-DE": "https://git-to-portfolio.vercel.app/de",
+      "es-ES": "https://git-to-portfolio.vercel.app/es",
+      "x-default": "https://git-to-portfolio.vercel.app/tr",
+    });
+    // One card, the one of the default locale's home, addressed by path.
+    expect(metadata.openGraph?.images).toEqual([
+      {
+        url: "https://git-to-portfolio.vercel.app/tr/opengraph-image/tr",
+        alt: expect.any(String),
+        type: "image/png",
+        width: 1200,
+        height: 630,
+      },
     ]);
-    expect(rootMetadata.openGraph?.images).toEqual(["/opengraph-image/tr"]);
-    expect(rootMetadata.twitter?.images).toEqual(["/opengraph-image/tr"]);
+    expect(metadata.twitter?.images).toEqual(metadata.openGraph?.images);
   });
 
-  it("renders the night theme by default", async () => {
-    // No cookie at all, and then a value the server does not recognise: neither
-    // may switch the palette away from the default the design is drawn for.
-    expect(readHtmlClass(await renderLayout())).toBe("dark");
+  it("renders the night theme and applies the real one in the browser", async () => {
+    const html = await renderLayout("en");
 
-    setThemeCookie("neon");
-    expect(readHtmlClass(await renderLayout())).toBe("dark");
-  });
+    // The server always renders the default palette: the document is static,
+    // so it cannot read the theme cookie. The two font classes follow it:
+    // the families that every page uses have to be on the document before
+    // the text is painted. The display serif is the third family, and it
+    // belongs to the home page alone, so it is not one of them.
+    const classNames = (readHtmlClass(html) ?? "").split(" ");
+    expect(classNames[0]).toBe("dark");
+    expect(classNames).toHaveLength(3);
 
-  it("renders the paper theme from the theme cookie", async () => {
-    setThemeCookie("light");
-
-    expect(readHtmlClass(await renderLayout())).toBe("light");
+    // The theme is applied before the first paint by an inline script, and the
+    // script is the shared constant, so it cannot drift from the toggle's.
+    expect(html).toContain(THEME_SCRIPT);
+    expect(html).toContain('name="theme-color"');
+    // The cookie the script reads is the one the toggle writes.
+    expect(THEME_SCRIPT).toContain('"theme"');
   });
 
   it("keeps the html class independent of the resolved locale", async () => {
     for (const locale of LOCALES) {
-      setLocaleHeader(locale);
-      setThemeCookie("dark");
-      const html = await renderLayout();
+      const html = await renderLayout(locale);
 
-      // The theme must not bleed into lang, or the other way round.
-      expect(html).toContain(`<html lang="${locale}" class="dark">`);
+      // The theme must not bleed into lang, or the other way round. The font
+      // classes are on the document as well, so the class list is longer than
+      // the theme class alone.
+      expect(html).toMatch(
+        new RegExp(`<html lang="${locale}" class="dark \\S+ \\S+"`),
+      );
     }
   });
 
-  it("matches the theme-color meta tag to the theme", async () => {
-    // The viewport is resolved per request from the same cookie as the class,
-    // otherwise the browser chrome would show the wrong palette for a year.
-    expect((await generateViewport()).themeColor).toBe("#0a1628");
-
-    setThemeCookie("light");
-    expect((await generateViewport()).themeColor).toBe("#f4f6f9");
+  it("declares a static viewport with the night chrome colour", () => {
+    // The viewport is a literal now: a request-time one would make every
+    // document dynamic. The inline script repaints the tag once the real
+    // theme is known.
+    expect(viewport).toEqual({
+      width: "device-width",
+      initialScale: 1,
+      themeColor: THEME_COLORS.dark,
+    });
+    expect(viewport.themeColor).toBe("#0a1628");
   });
 });

@@ -1,15 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import JsonLd from '@/components/JsonLd';
 import SearchForm from '@/components/SearchForm';
 import SiteHeader from '@/components/SiteHeader';
 import { EXAMPLES } from '@/lib/examples';
 import {
+  DEFAULT_LOCALE,
   getDictionary,
-  getLocale,
   getProfilePathname,
-  withLocale,
-  type SearchParams,
+  isLocale,
+  withBaseLocale,
+  type Locale,
 } from '@/lib/i18n';
 import {
   getAlternateOpenGraphLocales,
@@ -17,21 +19,38 @@ import {
   getHomeOpenGraphImagePath,
   getHowToJsonLd,
   getLocaleAlternatesMetadata,
+  getNoIndexMetadata,
   getOpenGraphLocale,
   getSocialImageMetadata,
   INDEXABLE_ROBOTS,
   SITE_NAME,
 } from '@/lib/seo';
 import { getGitHubRepoUrl } from '@/lib/site';
+import { frauncesVariable } from '../fonts/fraunces';
 
 const STEP_ICONS = ['user', 'image', 'document'] as const;
 
 type HomePageProps = {
-  searchParams: Promise<SearchParams>;
+  params: Promise<{ locale: string }>;
 };
 
-export async function generateMetadata({ searchParams }: HomePageProps): Promise<Metadata> {
-  const locale = getLocale(await searchParams);
+export async function generateMetadata({ params }: HomePageProps): Promise<Metadata> {
+  const { locale: rawLocale } = await params;
+
+  // The four supported locales are the only segments this site serves, and
+  // the body below answers anything else with a real 404 rather than
+  // rendering the default locale under a foreign URL. The metadata agrees
+  // with it: a page that is not there is not described as the Turkish home.
+  // The language is the one the not-found page answers in.
+  if (!isLocale(rawLocale)) {
+    const dictionary = getDictionary(DEFAULT_LOCALE);
+    return getNoIndexMetadata(DEFAULT_LOCALE, {
+      title: `${dictionary.notFound.pageTitle} | ${SITE_NAME}`,
+      description: dictionary.notFound.pageDescription,
+    });
+  }
+
+  const locale: Locale = rawLocale;
   const dictionary = getDictionary(locale);
   const title = dictionary.metadata.homeTitle;
   const description = dictionary.metadata.homeDescription;
@@ -121,14 +140,24 @@ function formatStepCode(index: number): string {
   return `S.${String(index + 1).padStart(2, '0')}`;
 }
 
-export default async function HomePage({ searchParams }: HomePageProps) {
-  const locale = getLocale(await searchParams);
+export default async function HomePage({ params }: HomePageProps) {
+  // The locale is a path segment, not a query parameter: the page is rendered
+  // once per language and prerendered, and reading `searchParams` here would
+  // make every one of them request-time again.
+  const { locale: rawLocale } = await params;
+  if (!isLocale(rawLocale)) notFound();
+  const locale: Locale = rawLocale;
+
   const dictionary = getDictionary(locale);
   const githubRepoUrl = getGitHubRepoUrl();
   const stepCount = String(dictionary.home.steps.length).padStart(2, '0');
 
   return (
-    <div className="relative flex min-h-screen flex-col">
+    // The serif is set on the line under the name mark, and on nothing
+    // else in the site, so it is loaded from this page rather than from
+    // the layout: the profile pages never ask for it. The class puts the
+    // family on the document for the headings below.
+    <div className={`relative flex min-h-screen flex-col ${frauncesVariable}`}>
       <SiteHeader locale={locale} />
 
       {/* The three steps rendered below, as structured data. */}
@@ -264,7 +293,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                   <li key={example.username}>
                     <Link
                       prefetch={false}
-                      href={withLocale(getProfilePathname(example.username), locale)}
+                      href={getProfilePathname(example.username, locale)}
                       className="pill-btn group flex items-center justify-between gap-4 px-4 py-4"
                     >
                       <span className="flex min-w-0 items-center gap-3">
@@ -307,7 +336,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               </a>
             )}
             <Link
-              href={`${withLocale('/', locale)}#nasil-calisir`}
+              href={`${withBaseLocale('/', locale)}#nasil-calisir`}
               className="transition-colors hover:text-accent"
             >
               {dictionary.home.howLink}

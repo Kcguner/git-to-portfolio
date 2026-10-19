@@ -31,6 +31,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The fonts are committed, so the build does not need the font
+      # toolchain — but the check that the declared unicode-range of each
+      # font matches the file does, and it is the check that keeps a range
+      # from claiming a codepoint the file lacks (which renders as tofu).
+      - name: Install the font toolchain
+        run: pip install --quiet fonttools brotli
+
+      - name: Check the declared font ranges against the font files
+        run: npm run fonts:check
+
       - name: Typecheck
         run: npm run typecheck
 

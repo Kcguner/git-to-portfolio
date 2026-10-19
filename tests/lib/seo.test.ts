@@ -3,7 +3,6 @@ import {
   DEFAULT_LOCALE,
   getDictionary,
   getLocaleAlternates,
-  getLocaleFromQueryValues,
   LOCALES,
   LOCALE_TAGS,
   OPEN_GRAPH_LOCALES,
@@ -69,33 +68,26 @@ const PROFILE = {
 };
 
 describe("locale-aware SEO URLs", () => {
-  it("keeps the default locale on a clean URL", () => {
-    expect(withLocale("/", DEFAULT_LOCALE)).toBe("/");
-    expect(withLocale("/ada", DEFAULT_LOCALE, "?lang=en&tab=repos")).toBe("/ada?tab=repos");
+  it("puts the locale in the path, for every locale", () => {
+    expect(withLocale("/", DEFAULT_LOCALE)).toBe("/tr");
+    expect(withLocale("/ada", DEFAULT_LOCALE, "?lang=en&tab=repos")).toBe(
+      "/tr/ada?tab=repos",
+    );
+    expect(withLocale("/ada", "de")).toBe("/de/ada");
   });
 
-  it("removes duplicate locale values when creating a localized URL", () => {
-    expect(withLocale("/ada", "de", "?lang=en&lang=tr")).toBe("/ada?lang=de");
+  it("drops the legacy lang query instead of carrying both forms", () => {
+    expect(withLocale("/ada", "de", "?lang=en&lang=tr")).toBe("/de/ada");
   });
 
   it("builds one hreflang target per supported locale", () => {
     expect(getLocaleAlternates("/ada")).toEqual({
-      [LOCALE_TAGS.tr]: "/ada",
-      [LOCALE_TAGS.en]: "/ada?lang=en",
-      [LOCALE_TAGS.de]: "/ada?lang=de",
-      [LOCALE_TAGS.es]: "/ada?lang=es",
-      "x-default": "/ada",
+      [LOCALE_TAGS.tr]: "/tr/ada",
+      [LOCALE_TAGS.en]: "/en/ada",
+      [LOCALE_TAGS.de]: "/de/ada",
+      [LOCALE_TAGS.es]: "/es/ada",
+      "x-default": "/tr/ada",
     });
-  });
-});
-
-describe("client locale query normalization", () => {
-  it("matches the server representation for a single value", () => {
-    expect(getLocaleFromQueryValues(["en"])).toBe("en");
-  });
-
-  it("keeps the safe default for repeated values on both sides", () => {
-    expect(getLocaleFromQueryValues(["en", "de"])).toBe(DEFAULT_LOCALE);
   });
 });
 
@@ -103,24 +95,27 @@ describe("localized URLs", () => {
   it("keeps a base path from SITE_URL instead of resolving against the origin", () => {
     // `new URL('/x', base)` would drop the subpath, which would break every
     // canonical, hreflang and image URL on a deployment behind one.
-    expect(getAbsoluteUrl("/octocat?lang=de")).toBe(
-      "https://seo.example.test/portfolio/octocat?lang=de",
+    expect(getAbsoluteUrl("/de/octocat")).toBe(
+      "https://seo.example.test/portfolio/de/octocat",
     );
     expect(getAbsoluteLocaleAlternates("/octocat")).toEqual({
-      "tr-TR": "https://seo.example.test/portfolio/octocat",
-      "en-US": "https://seo.example.test/portfolio/octocat?lang=en",
-      "de-DE": "https://seo.example.test/portfolio/octocat?lang=de",
-      "es-ES": "https://seo.example.test/portfolio/octocat?lang=es",
-      "x-default": "https://seo.example.test/portfolio/octocat",
+      "tr-TR": "https://seo.example.test/portfolio/tr/octocat",
+      "en-US": "https://seo.example.test/portfolio/en/octocat",
+      "de-DE": "https://seo.example.test/portfolio/de/octocat",
+      "es-ES": "https://seo.example.test/portfolio/es/octocat",
+      "x-default": "https://seo.example.test/portfolio/tr/octocat",
     });
   });
 
   it("points the canonical at the page's own language", () => {
     expect(getLocaleAlternatesMetadata("/", "tr").canonical).toBe(
-      "https://seo.example.test/portfolio/",
+      "https://seo.example.test/portfolio/tr",
     );
     expect(getLocaleAlternatesMetadata("/", "es").canonical).toBe(
-      "https://seo.example.test/portfolio/?lang=es",
+      "https://seo.example.test/portfolio/es",
+    );
+    expect(getLocaleAlternatesMetadata("/octocat", "de").canonical).toBe(
+      "https://seo.example.test/portfolio/de/octocat",
     );
     // The cluster is identical whichever language asks for it.
     expect(getLocaleAlternatesMetadata("/", "es").languages).toEqual(
@@ -128,16 +123,44 @@ describe("localized URLs", () => {
     );
   });
 
+  it("keeps the account called `en` off the language homes", () => {
+    // The GitHub account `en` exists. Its base path is `/en`, and its four
+    // published addresses are `/tr/en`, `/en/en`, `/de/en` and `/es/en` — the
+    // locale is added in front of the base path, never substituted into it.
+    expect(getLocaleAlternatesMetadata("/en", "tr").canonical).toBe(
+      "https://seo.example.test/portfolio/tr/en",
+    );
+    expect(getLocaleAlternatesMetadata("/en", "en").canonical).toBe(
+      "https://seo.example.test/portfolio/en/en",
+    );
+    expect(getLocaleAlternatesMetadata("/en", "de").canonical).toBe(
+      "https://seo.example.test/portfolio/de/en",
+    );
+    expect(getLocaleAlternatesMetadata("/en", "es").canonical).toBe(
+      "https://seo.example.test/portfolio/es/en",
+    );
+
+    // The cluster says the same thing, and its `x-default` is the Turkish
+    // address of that account, not the Turkish home.
+    expect(getLocaleAlternatesMetadata("/en", "tr").languages).toEqual({
+      "tr-TR": "https://seo.example.test/portfolio/tr/en",
+      "en-US": "https://seo.example.test/portfolio/en/en",
+      "de-DE": "https://seo.example.test/portfolio/de/en",
+      "es-ES": "https://seo.example.test/portfolio/es/en",
+      "x-default": "https://seo.example.test/portfolio/tr/en",
+    });
+  });
+
   it("builds one social card URL per language, addressed by path", () => {
     expect(LOCALES.map(getHomeOpenGraphImagePath)).toEqual([
-      "/opengraph-image/tr",
-      "/opengraph-image/en",
-      "/opengraph-image/de",
-      "/opengraph-image/es",
+      "/tr/opengraph-image/tr",
+      "/en/opengraph-image/en",
+      "/de/opengraph-image/de",
+      "/es/opengraph-image/es",
     ]);
-    expect(getProfilePathname("octo cat")).toBe("/octo%20cat");
+    expect(getProfilePathname("octo cat", "es")).toBe("/es/octo%20cat");
     expect(getProfileOpenGraphImagePath("octocat", "es")).toBe(
-      "/octocat/opengraph-image/es",
+      "/es/octocat/opengraph-image/es",
     );
   });
 
@@ -152,9 +175,9 @@ describe("localized URLs", () => {
 
 describe("social card metadata", () => {
   it("describes one image with its dimensions, type and alt text", () => {
-    expect(getSocialImageMetadata("/opengraph-image/de", "Kartenalt")).toEqual([
+    expect(getSocialImageMetadata("/de/opengraph-image/de", "Kartenalt")).toEqual([
       {
-        url: "https://seo.example.test/portfolio/opengraph-image/de",
+        url: "https://seo.example.test/portfolio/de/opengraph-image/de",
         alt: "Kartenalt",
         type: "image/png",
         width: SOCIAL_IMAGE_SIZE.width,
@@ -218,6 +241,8 @@ describe("structured data", () => {
         expect(node.name).toBe(SITE_NAME);
         expect(node.description).toBe(getDictionary(locale).metadata.homeDescription);
         expect(node.inLanguage).toBe(LOCALE_TAGS[locale]);
+        // The site itself lives under the locale's own path.
+        expect(node.url).toBe(`https://seo.example.test/portfolio/${locale}`);
       }
     }
   });
@@ -265,28 +290,89 @@ describe("structured data", () => {
       '@id': string;
       url: string;
       inLanguage: string;
+      image: string;
       mainEntity: { '@id': string; knowsAbout: string[] };
       hasPart: Array<Record<string, unknown>>;
     };
 
     // The page URL carries the language; the entity id does not, so the four
     // languages describe one person.
-    expect(node.url).toBe("https://seo.example.test/portfolio/octocat?lang=de");
+    expect(node.url).toBe("https://seo.example.test/portfolio/de/octocat");
     expect(node.inLanguage).toBe("de-DE");
-    expect(node['@id']).toBe("https://seo.example.test/portfolio/octocat#webpage");
-    expect(node.mainEntity['@id']).toBe("https://seo.example.test/portfolio/octocat#person");
+    expect(node.image).toBe(
+      "https://seo.example.test/portfolio/de/octocat/opengraph-image/de",
+    );
+    expect(node['@id']).toBe("https://seo.example.test/portfolio/tr/octocat#webpage");
+    expect(node.mainEntity['@id']).toBe(
+      "https://seo.example.test/portfolio/tr/octocat#person",
+    );
     expect(node.mainEntity.knowsAbout).toEqual(["TypeScript"]);
     expect(node.hasPart).toHaveLength(1);
     expect(node.hasPart[0]).toMatchObject({
       '@type': "SoftwareSourceCode",
       codeRepository: "https://github.com/octocat/repo-1",
-      author: { '@id': "https://seo.example.test/portfolio/octocat#person" },
+      author: { '@id': "https://seo.example.test/portfolio/tr/octocat#person" },
       interactionStatistic: {
         '@type': "InteractionCounter",
         interactionType: "https://schema.org/LikeAction",
         userInteractionCount: 12,
       },
     });
+  });
+
+  it("gives the person one stable identity across all four languages", () => {
+    const personIds = new Set<string>();
+    const pageIds = new Set<string>();
+
+    for (const locale of LOCALES) {
+      const node = getProfileJsonLd({ ...PROFILE, locale }) as Record<string, never> & {
+        '@id': string;
+        url: string;
+        mainEntity: { '@id': string };
+      };
+
+      // The default locale's URL is the stable address of the person, because
+      // there is no locale-free URL left to hang the id on.
+      expect(node.mainEntity['@id']).toBe(
+        "https://seo.example.test/portfolio/tr/octocat#person",
+      );
+      expect(node['@id']).toBe("https://seo.example.test/portfolio/tr/octocat#webpage");
+      // The page URL, on the other hand, is the language that was asked for.
+      expect(node.url).toBe(`https://seo.example.test/portfolio/${locale}/octocat`);
+
+      personIds.add(node.mainEntity['@id']);
+      pageIds.add(node['@id']);
+    }
+
+    expect(personIds.size).toBe(1);
+    expect(pageIds.size).toBe(1);
+  });
+
+  it("describes the account called `en` as itself, not as the English home", () => {
+    const node = getProfileJsonLd({
+      ...PROFILE,
+      locale: "de",
+      pathname: "/en",
+      login: "en",
+      displayName: "The Account Called En",
+    }) as Record<string, never> & {
+      '@id': string;
+      url: string;
+      image: string;
+      mainEntity: { '@id': string };
+    };
+
+    // The page URL is the German address of that account, not the German
+    // home: the locale goes in front of the base path, it does not replace it.
+    expect(node.url).toBe("https://seo.example.test/portfolio/de/en");
+    expect(node.image).toBe(
+      "https://seo.example.test/portfolio/de/en/opengraph-image/de",
+    );
+    // The identity of the account is stable in the default locale.
+    expect(node['@id']).toBe("https://seo.example.test/portfolio/tr/en#webpage");
+    expect(node.mainEntity['@id']).toBe(
+      "https://seo.example.test/portfolio/tr/en#person",
+    );
   });
 
   it("leaves out what the page does not show", () => {

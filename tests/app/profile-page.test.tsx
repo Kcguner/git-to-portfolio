@@ -108,7 +108,7 @@ vi.mock("next/image", () => ({
   },
 }));
 
-import UserPage, { generateMetadata } from "../../app/[username]/page";
+import UserPage, { generateMetadata } from "../../app/[locale]/[username]/page";
 import { dictionaries } from "../../lib/i18n";
 import {
   GitHubSecondaryRateLimitError,
@@ -224,8 +224,7 @@ describe("profile page", () => {
 
   it("uses only the six displayed repositories for language percentages", async () => {
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "en" }),
+      params: Promise.resolve({ locale: "en", username: "octocat" }),
     });
     const html = await render(element);
 
@@ -240,8 +239,7 @@ describe("profile page", () => {
 
   it("holds the repository block behind a boundary that a status line can survive", async () => {
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "en" }),
+      params: Promise.resolve({ locale: "en", username: "octocat" }),
     });
 
     // The page returned its tree without asking GitHub for a single repository.
@@ -267,8 +265,7 @@ describe("profile page", () => {
     githubMocks.getPinnedRepos.mockResolvedValue(pinned);
 
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "en" }),
+      params: Promise.resolve({ locale: "en", username: "octocat" }),
     });
     const html = await render(element);
 
@@ -276,18 +273,18 @@ describe("profile page", () => {
     expect(html).toContain('data-source="pinned"');
     // The featured languages follow whichever list is on the sheet.
     expect(html).toContain('data-languages="TypeScript:67,JavaScript:33"');
-    // The ranking is the fallback: it is not paid for when the pinned list
-    // answers, and the canonical login is what gets looked up.
+    // The two lookups start together, so the ranking is paid for in parallel
+    // instead of as a second round trip after the pinned list answers, and
+    // the canonical login is what gets looked up.
     expect(githubMocks.getPinnedRepos).toHaveBeenCalledWith("octocat");
-    expect(githubMocks.getTopRepos).not.toHaveBeenCalled();
+    expect(githubMocks.getTopRepos).toHaveBeenCalledWith("octocat", 6);
   });
 
   it("falls back to the ranked repositories when nothing is pinned", async () => {
     githubMocks.getPinnedRepos.mockResolvedValue([]);
 
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "tr" }),
+      params: Promise.resolve({ locale: "tr", username: "octocat" }),
     });
     const html = await render(element);
 
@@ -299,12 +296,11 @@ describe("profile page", () => {
   it("redirects non-canonical usernames while preserving the locale", async () => {
     await expect(
       UserPage({
-        params: Promise.resolve({ username: "Octocat" }),
-        searchParams: Promise.resolve({ lang: "de" }),
+        params: Promise.resolve({ locale: "de", username: "Octocat" }),
       })
-    ).rejects.toThrow("NEXT_REDIRECT:/octocat?lang=de");
+    ).rejects.toThrow("NEXT_REDIRECT:/de/octocat");
 
-    expect(navigationMocks.permanentRedirect).toHaveBeenCalledWith("/octocat?lang=de");
+    expect(navigationMocks.permanentRedirect).toHaveBeenCalledWith("/de/octocat");
     expect(githubMocks.getProfile).not.toHaveBeenCalled();
   });
 
@@ -313,8 +309,7 @@ describe("profile page", () => {
 
     await expect(
       UserPage({
-        params: Promise.resolve({ username: "missing-user" }),
-        searchParams: Promise.resolve({ lang: "es" }),
+        params: Promise.resolve({ locale: "es", username: "missing-user" }),
       })
     ).rejects.toThrow("NEXT_NOT_FOUND");
 
@@ -327,8 +322,7 @@ describe("profile page", () => {
 
     await expect(
       UserPage({
-        params: Promise.resolve({ username: "octocat" }),
-        searchParams: Promise.resolve({ lang: "tr" }),
+        params: Promise.resolve({ locale: "tr", username: "octocat" }),
       })
     ).rejects.toBeInstanceOf(GitHubUpstreamError);
 
@@ -348,8 +342,7 @@ describe("profile page", () => {
     );
 
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "en" }),
+      params: Promise.resolve({ locale: "en", username: "octocat" }),
     });
     const html = await render(element);
 
@@ -382,8 +375,7 @@ describe("profile page", () => {
     githubMocks.getTopRepos.mockRejectedValue(new Error("socket hang up"));
 
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "de" }),
+      params: Promise.resolve({ locale: "de", username: "octocat" }),
     });
     const html = await render(element);
 
@@ -401,12 +393,11 @@ describe("profile page", () => {
 
     await expect(
       UserPage({
-        params: Promise.resolve({ username: "octocat" }),
-        searchParams: Promise.resolve({ lang: "en" }),
+        params: Promise.resolve({ locale: "en", username: "octocat" }),
       })
-    ).rejects.toThrow("NEXT_REDIRECT:/mona?lang=en");
+    ).rejects.toThrow("NEXT_REDIRECT:/en/mona");
 
-    expect(navigationMocks.permanentRedirect).toHaveBeenCalledWith("/mona?lang=en");
+    expect(navigationMocks.permanentRedirect).toHaveBeenCalledWith("/en/mona");
     expect(githubMocks.getTopRepos).not.toHaveBeenCalled();
     // No repository lookup before the profile is confirmed and canonical.
     expect(githubMocks.getPinnedRepos).not.toHaveBeenCalled();
@@ -415,8 +406,7 @@ describe("profile page", () => {
   it("rejects an unusable username before any GitHub call", async () => {
     await expect(
       UserPage({
-        params: Promise.resolve({ username: "_not-a-login" }),
-        searchParams: Promise.resolve({ lang: "en" }),
+        params: Promise.resolve({ locale: "en", username: "_not-a-login" }),
       })
     ).rejects.toThrow("NEXT_NOT_FOUND");
 
@@ -427,8 +417,7 @@ describe("profile page", () => {
 
   it("skips the profile lookup for an unusable username in metadata", async () => {
     const metadata = await generateMetadata({
-      params: Promise.resolve({ username: "_not-a-login" }),
-      searchParams: Promise.resolve({ lang: "en" }),
+      params: Promise.resolve({ locale: "en", username: "_not-a-login" }),
     });
 
     expect(metadata.title).toBe("User not found");
@@ -438,8 +427,7 @@ describe("profile page", () => {
 
   it("renders the page header at every breakpoint without a second h1", async () => {
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "en" }),
+      params: Promise.resolve({ locale: "en", username: "octocat" }),
     });
     const html = await render(element);
 
@@ -462,8 +450,7 @@ describe("profile page", () => {
 
   it("closes the sheet with a titleblock footer instead of a bare rule", async () => {
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "en" }),
+      params: Promise.resolve({ locale: "en", username: "octocat" }),
     });
     const html = await render(element);
 
@@ -475,12 +462,24 @@ describe("profile page", () => {
     expect(footer).not.toContain("border-t border-border/50");
   });
 
+  it("links back to the home of this language and shares this language's URL", async () => {
+    const element = await UserPage({
+      params: Promise.resolve({ locale: "de", username: "octocat" }),
+    });
+    const html = await render(element);
+
+    // The way back home is a localized address, not the bare root the Proxy
+    // would have to negotiate again.
+    expect(html).toContain('href="/de"');
+    // The share button carries this page's own canonical URL.
+    expect(html).toContain("https://git-to-portfolio.vercel.app/de/octocat");
+  });
+
   it("uses localized no-index metadata for a missing profile", async () => {
     githubMocks.getProfile.mockRejectedValue(new GitHubUserNotFoundError());
 
     const metadata = await generateMetadata({
-      params: Promise.resolve({ username: "missing-user" }),
-      searchParams: Promise.resolve({ lang: "de" }),
+      params: Promise.resolve({ locale: "de", username: "missing-user" }),
     });
 
     expect(metadata.title).toBe("Benutzer nicht gefunden");
@@ -489,17 +488,17 @@ describe("profile page", () => {
 
   it("builds localized canonical and hreflang metadata", async () => {
     const metadata = await generateMetadata({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "en" }),
+      params: Promise.resolve({ locale: "en", username: "octocat" }),
     });
 
     expect(metadata.alternates).toMatchObject({
-      canonical: "https://git-to-portfolio.vercel.app/octocat?lang=en",
+      canonical: "https://git-to-portfolio.vercel.app/en/octocat",
       languages: {
-        "tr-TR": "https://git-to-portfolio.vercel.app/octocat",
-        "en-US": "https://git-to-portfolio.vercel.app/octocat?lang=en",
-        "de-DE": "https://git-to-portfolio.vercel.app/octocat?lang=de",
-        "es-ES": "https://git-to-portfolio.vercel.app/octocat?lang=es",
+        "tr-TR": "https://git-to-portfolio.vercel.app/tr/octocat",
+        "en-US": "https://git-to-portfolio.vercel.app/en/octocat",
+        "de-DE": "https://git-to-portfolio.vercel.app/de/octocat",
+        "es-ES": "https://git-to-portfolio.vercel.app/es/octocat",
+        "x-default": "https://git-to-portfolio.vercel.app/tr/octocat",
       },
     });
     expect(metadata.keywords).toEqual(
@@ -514,7 +513,7 @@ describe("profile page", () => {
     // query still gets this page's language rendered in the image.
     expect(metadata.twitter?.images).toEqual([
       {
-        url: "https://git-to-portfolio.vercel.app/octocat/opengraph-image/en",
+        url: "https://git-to-portfolio.vercel.app/en/octocat/opengraph-image/en",
         alt: "GitHub portfolio of The Octocat",
         type: "image/png",
         width: 1200,
@@ -526,16 +525,17 @@ describe("profile page", () => {
 
   it("describes the person, their projects and their languages as structured data", async () => {
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "de" }),
+      params: Promise.resolve({ locale: "de", username: "octocat" }),
     });
     const html = await render(element);
     const payload = readJsonLdBlocks(html)[0] as {
       '@type': string;
+      '@id': string;
       url: string;
       inLanguage: string;
       mainEntity: {
         '@type': string;
+        '@id': string;
         name: string;
         alternateName: string;
         url: string;
@@ -552,9 +552,16 @@ describe("profile page", () => {
     };
 
     expect(payload['@type']).toBe("ProfilePage");
-    // The localized page, but the entity id stays locale-free so the four
-    // languages describe one person rather than four.
-    expect(payload.url).toBe("https://git-to-portfolio.vercel.app/octocat?lang=de");
+    // The page URL carries the language; the entity ids stay on the default
+    // locale's address, so the four languages describe one person rather than
+    // four.
+    expect(payload.url).toBe("https://git-to-portfolio.vercel.app/de/octocat");
+    expect(payload['@id']).toBe(
+      "https://git-to-portfolio.vercel.app/tr/octocat#webpage",
+    );
+    expect(payload.mainEntity['@id']).toBe(
+      "https://git-to-portfolio.vercel.app/tr/octocat#person",
+    );
     expect(payload.inLanguage).toBe("de-DE");
     // No `dateCreated`: the account's `created_at` would date the portfolio to
     // the day the GitHub account was opened, which says nothing about the page.
@@ -585,7 +592,7 @@ describe("profile page", () => {
       programmingLanguage: "TypeScript",
     });
     expect(payload.hasPart[0]?.author['@id']).toBe(
-      "https://git-to-portfolio.vercel.app/octocat#person",
+      "https://git-to-portfolio.vercel.app/tr/octocat#person",
     );
   });
 
@@ -593,8 +600,7 @@ describe("profile page", () => {
     githubMocks.getTopRepos.mockResolvedValue([]);
 
     const element = await UserPage({
-      params: Promise.resolve({ username: "octocat" }),
-      searchParams: Promise.resolve({ lang: "es" }),
+      params: Promise.resolve({ locale: "es", username: "octocat" }),
     });
     const payload = readJsonLdBlocks(await render(element))[0] as {
       hasPart?: unknown;

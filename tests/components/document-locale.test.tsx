@@ -4,16 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LOCALES, type Locale } from "../../lib/i18n";
 
 const navigationMocks = vi.hoisted(() => ({
-  searchParams: vi.fn(() => new URLSearchParams()),
-  setSearchParams: (search: string) => {
-    navigationMocks.searchParams.mockReturnValue(new URLSearchParams(search));
+  params: { locale: undefined } as { locale?: string },
+  setParams: (locale?: string) => {
+    navigationMocks.params = { locale };
   },
 }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/current",
   useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: navigationMocks.searchParams,
+  // The locale is a path segment, so the router state is where the document
+  // reads it from.
+  useParams: () => navigationMocks.params,
 }));
 
 import DocumentLocale from "../../components/DocumentLocale";
@@ -30,7 +32,7 @@ const EXPECTED_NOT_FOUND = {
     userDescription:
       "Aradığın GitHub kullanıcısı bulunamadı. Kullanıcı adını kontrol edip tekrar dene.",
     backHome: "Ana sayfaya dön",
-    href: "/",
+    href: "/tr",
   },
   en: {
     pageLabel: "Page not found",
@@ -42,7 +44,7 @@ const EXPECTED_NOT_FOUND = {
     userDescription:
       "The GitHub user you requested could not be found. Check the username and try again.",
     backHome: "Back to home",
-    href: "/?lang=en",
+    href: "/en",
   },
   de: {
     pageLabel: "Seite nicht gefunden",
@@ -54,7 +56,7 @@ const EXPECTED_NOT_FOUND = {
     userDescription:
       "Der gesuchte GitHub-Benutzer wurde nicht gefunden. Prüfe den Benutzernamen und versuche es erneut.",
     backHome: "Zurück zur Startseite",
-    href: "/?lang=de",
+    href: "/de",
   },
   es: {
     pageLabel: "Página no encontrada",
@@ -66,14 +68,14 @@ const EXPECTED_NOT_FOUND = {
     userDescription:
       "No se encontró el usuario de GitHub solicitado. Comprueba el nombre e inténtalo de nuevo.",
     backHome: "Volver al inicio",
-    href: "/?lang=es",
+    href: "/es",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 
 describe("DocumentLocale", () => {
   beforeEach(() => {
     document.documentElement.removeAttribute("lang");
-    navigationMocks.searchParams.mockReset().mockReturnValue(new URLSearchParams());
+    navigationMocks.setParams(undefined);
   });
 
   afterEach(cleanup);
@@ -90,9 +92,9 @@ describe("DocumentLocale", () => {
     expect(document.documentElement.lang).toBe("tr");
   });
 
-  it("applies every supported locale from the lang query value", () => {
+  it("applies every supported locale from the path segment", () => {
     for (const locale of LOCALES) {
-      navigationMocks.setSearchParams(`lang=${locale}`);
+      navigationMocks.setParams(locale);
       const { unmount } = render(<DocumentLocale />);
 
       expect(document.documentElement.lang).toBe(locale);
@@ -101,25 +103,27 @@ describe("DocumentLocale", () => {
   });
 
   it("re-applies the locale when a client navigation changes it", () => {
-    navigationMocks.setSearchParams("lang=en");
+    navigationMocks.setParams("en");
     const { rerender } = render(<DocumentLocale />);
     expect(document.documentElement.lang).toBe("en");
 
-    navigationMocks.setSearchParams("lang=de");
+    navigationMocks.setParams("de");
     rerender(<DocumentLocale />);
     expect(document.documentElement.lang).toBe("de");
   });
 
-  it("falls back to the default for a missing or unusable lang value", () => {
-    navigationMocks.setSearchParams("");
+  it("falls back to the default for a missing or unusable segment", () => {
+    navigationMocks.setParams(undefined);
     const { rerender } = render(<DocumentLocale />);
     expect(document.documentElement.lang).toBe("tr");
 
-    navigationMocks.setSearchParams("lang=fr");
+    // A segment that is not one of the four languages is not a language: it
+    // is a username that happens to look like one.
+    navigationMocks.setParams("fr");
     rerender(<DocumentLocale />);
     expect(document.documentElement.lang).toBe("tr");
 
-    navigationMocks.setSearchParams("lang=en&lang=de");
+    navigationMocks.setParams("");
     rerender(<DocumentLocale />);
     expect(document.documentElement.lang).toBe("tr");
   });
@@ -175,9 +179,10 @@ describe("NotFoundView", () => {
   });
 
   it("is free of client hooks, so it renders into static HTML", async () => {
-    // No `useSearchParams` in the 404 tree is what allows the not-found
-    // segments to render their body on the server instead of bailing out to
-    // client rendering. This asserts that property directly.
+    // No router hook in the 404 tree is what allows the not-found segments to
+    // render their body on the server instead of bailing out to client
+    // rendering: the locale is passed in, not read from the router. This
+    // asserts that property directly.
     const { renderToStaticMarkup } = await import("react-dom/server");
     const html = renderToStaticMarkup(<NotFoundView locale="de" kind="user" />);
 
