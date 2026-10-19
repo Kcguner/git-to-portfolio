@@ -9,7 +9,7 @@ Hemen deneyebileceğiniz gerçek portföyler:
 - [`/tr/kcguner`](https://git-to-portfolio.vercel.app/tr/kcguner) — bu sitenin yaratıcısı
 - [`/tr/torvalds`](https://git-to-portfolio.vercel.app/tr/torvalds) — Linux'un yaratıcısı
 
-![CI](https://github.com/Kcguner/git-to-portfolio/actions/workflows/ci.yml/badge.svg) ![Lisans: MIT](https://img.shields.io/github/license/Kcguner/git-to-portfolio) ![Next.js 16](https://img.shields.io/badge/Next.js-16.3.6-000000?style=flat-square&logo=next.js) ![Node 20](https://img.shields.io/badge/node-%3E%3D20.9-5FA04E?style=flat-square)
+![CI](https://github.com/Kcguner/git-to-portfolio/actions/workflows/ci.yml/badge.svg) ![Lisans: MIT](https://img.shields.io/github/license/Kcguner/git-to-portfolio) ![Next.js 16](https://img.shields.io/badge/Next.js-16.4.2-000000?style=flat-square&logo=next.js) ![Node 20](https://img.shields.io/badge/node-%3E%3D20.9-5FA04E?style=flat-square)
 
 ## Özellikler
 
