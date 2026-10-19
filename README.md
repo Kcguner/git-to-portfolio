@@ -6,27 +6,29 @@ Turn any public GitHub profile into a clean, shareable, print-ready developer po
 
 Real portfolios you can try right now:
 
-- [`/kcguner`](https://git-to-portfolio.vercel.app/kcguner) — the creator of this site
-- [`/torvalds`](https://git-to-portfolio.vercel.app/torvalds) — the creator of Linux
+- [`/en/kcguner`](https://git-to-portfolio.vercel.app/en/kcguner) — the creator of this site
+- [`/en/torvalds`](https://git-to-portfolio.vercel.app/en/torvalds) — the creator of Linux
 
 ![CI](https://github.com/Kcguner/git-to-portfolio/actions/workflows/ci.yml/badge.svg) ![License: MIT](https://img.shields.io/github/license/Kcguner/git-to-portfolio) ![Next.js 16](https://img.shields.io/badge/Next.js-16.3.6-000000?style=flat-square&logo=next.js) ![Node 20](https://img.shields.io/badge/node-%3E%3D20.9-5FA04E?style=flat-square)
 
 ## Features
 
 - Blueprint identity: hairline-bordered sheets, titleblock strips, spec tables, sharp 2px corners, no gradients, no glow, no infinite motion
-- Deep-navy night theme by default with a paper-light inversion and a header toggle; the choice is remembered in a cookie and applied server-side
+- Deep-navy night theme by default with a paper-light inversion and a header toggle; the choice is remembered in a cookie and applied before the first paint
 - Public profile with avatar, bio, location, social links and follower/repo counts
 - Pinned repositories first, falling back to the starred ranking when there is no token or nothing is pinned
 - Featured-language distribution, counted by repository and formatted for the reader's language
 - Repository topics as mono annotation chips on each project cell
-- Turkish, English, German and Spanish, resolved on the server
+- Turkish, English, German and Spanish, one URL per language: `/tr`, `/en`, `/de`, `/es`
+- Static pages: the home page is prerendered per language, the profile pages are revalidated on an interval
 - Streamed loading skeleton for the repository block, shaped like the projects it stands in for
 - Print-optimized stylesheet with a one-click **Save as PDF** export
 - Native Web Share with an accessible clipboard fallback
 - Localized Open Graph and Twitter card images, one static image per language and per profile, drawn as blueprint cards
 - Per-language titles, descriptions, keywords, hreflang clusters and JSON-LD structured data
+- A static Content-Security-Policy, with the strict policy also sent as report-only
 - Installable web app metadata
-- One-hour GitHub API revalidation
+- Cached GitHub calls: an hour for the repository listing, ten minutes for the pinned list, a minute for a social card
 - Vitest suite with enforced coverage thresholds, TypeScript, ESLint and CI
 
 ## Requirements
@@ -53,15 +55,20 @@ The language bars count how many of those six repositories use each language —
 
 ## Languages
 
-Turkish (`tr`) is the default. Use the selector in the header, or add `lang` to any URL:
+Turkish (`tr`) is the default. The language is part of the address, not a parameter on it, so every language is a real page of its own:
 
 | Language | Home | Example profile |
 | --- | --- | --- |
-| English | `/?lang=en` | `/torvalds?lang=en` |
-| Deutsch | `/?lang=de` | `/torvalds?lang=de` |
-| Español | `/?lang=es` | `/torvalds?lang=es` |
+| Türkçe | `/tr` | `/tr/torvalds` |
+| English | `/en` | `/en/torvalds` |
+| Deutsch | `/de` | `/de/torvalds` |
+| Español | `/es` | `/es/torvalds` |
 
-A missing, repeated or unsupported `lang` falls back to Turkish. `proxy.js` resolves the locale once per request — an explicit `?lang=` wins, otherwise the `Accept-Language` header is negotiated, otherwise Turkish is used — and passes it to the layout through an internal request header, so `<html lang>` is correct in the initial HTML rather than only after hydration.
+Use the selector in the header or open the URL of the language you want. Because the language is in the path, the four of them are four separately cached, separately indexable documents — a search engine can rank the English page on its own terms, without it being a copy of the Turkish one.
+
+The bare `/` is the only address that cannot name a language, and it is the only one that negotiates. It answers with a `302` to the visitor's language: the `site-locale` cookie wins if it holds one, otherwise the `Accept-Language` header is negotiated, otherwise Turkish is used. The negotiated choice is written back to the cookie, so the root only has to guess once.
+
+Every old address still works, permanently. `/?lang=en` answers `308` to `/en`, `/torvalds?lang=de` answers `308` to `/de/torvalds`, and a bare `/torvalds` answers `308` to `/tr/torvalds`. A missing, repeated or unsupported `lang` in the old query form resolves to Turkish.
 
 ## Environment Variables
 
@@ -88,9 +95,11 @@ All three are read on the server only and are never sent to the browser, so none
 1. `GET /users/:username` loads the public profile.
 2. GraphQL `pinnedItems` loads the repositories the person chose, in their order. It needs `GITHUB_TOKEN` — the GraphQL API has no anonymous quota — and answers `null` for any failure, so this step is skipped without a token.
 3. `GET /users/:username/repos` is the fallback: forks and archived entries filtered out, ranked locally by stars.
-4. Both responses are cached for one hour. The language is carried in the URL, not in a cookie.
+4. The two lookups run in parallel, and both answers are cached: the pinned list for ten minutes, the repository listing for an hour. The language is carried in the URL, not in a cookie.
 
-The core API is used for the fallback ranking rather than the Search API. Unauthenticated search rejects some public accounts outright with `422 Validation Failed`, which would render a valid profile with no repositories at all, and it is rate limited at 10 requests per minute against the core API's 60 per hour. The trade-off is ranking scope: the core API cannot sort by stars, so the six cards are the most-starred of the user's 100 most recently pushed repositories, which is exact for the large majority of accounts. Raise `DEFAULT_REPO_PAGES` in `lib/github.ts` to widen that window.
+The core API is used for the fallback ranking rather than the Search API. Unauthenticated search rejects some public accounts outright with `422 Validation Failed`, which would render a valid profile with no repositories at all, and it is rate limited at 10 requests per minute against the core API's 60 per hour. The trade-off is ranking scope: the core API cannot sort by stars, so the six cards are the most-starred of the user's 30 most recently pushed repositories, which is exact for the large majority of accounts. Raise `REPO_RANKING_WINDOW` in `lib/github.ts` to widen that window.
+
+Every page is a static document. The home page is prerendered per language at build time and the profile pages are revalidated on an interval, so a portfolio is served from the edge cache instead of being rendered per request. The locale is a build-time value because it is in the path, and nothing in the root layout reads a request-time value any more: the theme is applied by a small inline script instead of being read from a cookie on the server. A request-time value in the root layout is what made every route dynamic and uncacheable.
 
 ## Share and Print
 
@@ -102,13 +111,13 @@ The **Print / Save as PDF** action opens the browser print dialog. The print sty
 
 Every page describes itself to crawlers in the language it is rendered in, and `lib/seo.ts` is the single place that decides how:
 
-- **Canonical and hreflang.** Each page's `canonical` is its own localized URL, and every page carries the full cluster — `tr-TR`, `en-US`, `de-DE`, `es-ES` and `x-default` — as absolute `hreflang` alternates, in the `<head>` and in `sitemap.xml`.
+- **Canonical and hreflang.** Each page's `canonical` is its own localized URL — the locale is the first path segment, so it is `/{locale}` or `/{locale}/{username}` — and every page carries the full cluster — `tr-TR`, `en-US`, `de-DE`, `es-ES` and `x-default` — as absolute `hreflang` alternates, in the `<head>` and in `sitemap.xml`.
 - **Titles, descriptions and keywords.** Localized per language, including a keyword set for each portfolio that contains the person's name, so a search for their name plus "portfolio" can find them in any of the four languages.
-- **Structured data.** JSON-LD in the reader's language: the site as `WebSite` and `WebApplication`, the home page's visible three steps as a `HowTo`, and a portfolio as a `ProfilePage` whose subject is a `Person`, with the six displayed repositories as `SoftwareSourceCode` and their languages as `knowsAbout`. Only facts the page shows are emitted, and the entity id is the locale-free URL, so all four languages describe one person rather than four.
-- **Social cards.** One image per language, at `/opengraph-image/<locale>` and `/<user>/opengraph-image/<locale>`. The language is a path segment rather than a query parameter because social crawlers fetch the image URL on its own; each language is also a separate cache entry, and the home page cards are prerendered at build time. `og:locale:alternate` tells Facebook, LinkedIn and Slack which card matches the page.
+- **Structured data.** JSON-LD in the reader's language: the site as `WebSite` and `WebApplication`, the home page's visible three steps as a `HowTo`, and a portfolio as a `ProfilePage` whose subject is a `Person`, with the six displayed repositories as `SoftwareSourceCode` and their languages as `knowsAbout`. Only facts the page shows are emitted, and the entity id is the default-locale URL, so all four languages describe one person rather than four.
+- **Social cards.** One image per language, at `/{locale}/opengraph-image/{locale}` and `/{locale}/{username}/opengraph-image/{locale}`. The language is a path segment rather than a query parameter because social crawlers fetch the image URL on its own; each language is also a separate cache entry, and the home page cards are prerendered at build time. `og:locale:alternate` tells Facebook, LinkedIn and Slack which card matches the page.
 - **Sitemap.** One entry per language per page, each repeating the full hreflang cluster, with no fabricated `lastmod`. The two 404 segments are `noindex` and carry a card in the reader's language.
 
-The language a page is rendered in comes from the URL, not from a cookie, so a crawler that ignores `Accept-Language` and requests `/` always gets the same Turkish document with the same Turkish metadata.
+The language a page is rendered in comes from the URL, not from a cookie, so a crawler that requests `/tr` — or `/en`, `/de`, `/es` — always gets the same document for that address, with the same metadata, and each of the four is a stable, indexable URL of its own.
 
 ## Quality Checks
 
@@ -144,8 +153,8 @@ Next.js 16 App Router · React 19 · Tailwind CSS 3 · GitHub REST API · Vitest
 ## Known Limitations
 
 - **The project list is streamed, and so is its structured data.** An unknown username answers `404` and a non-canonical login answers `308` because both are decided before the response body starts, which means the repository lookup runs behind a `<Suspense>` boundary of its own. The person, the header and the footer are in the first chunk, with a skeleton in the space the projects will take; the six repositories, the featured languages and the `ProfilePage` data block describing them arrive in the last. A crawler that renders JavaScript sees the finished sheet; a client that stops at the first chunk sees the person without the project list.
-- **The theme is not a third state.** The toggle only offers night (the default) and paper. There is no "system" mode, and the first visit always renders the night palette even when the browser asks for light.
-- **Rate limiting is the only cache.** There is no API route and no additional caching layer. A token is what keeps a public deployment responsive.
+- **The theme is not a third state.** The toggle only offers night (the default) and paper. There is no "system" mode, and the server always renders the night palette — the stored theme is applied by a small inline script before the first paint, so the page never flashes the wrong theme. The one visible consequence is the browser chrome: the server-rendered `<meta name="theme-color">` is the dark value and the client repaints it, so a visitor in the paper theme can see the dark address bar for a moment.
+- **There is no API route.** Everything is a page or a metadata route, and the caching is the framework's: the repository listing is cached for an hour, the pinned list for ten minutes, a social card for a minute, and the pages themselves are static. A token is what keeps a public deployment under the anonymous rate limit.
 - **The 404 body is hydrated.** The status, the localized `<title>` and the `noindex` metadata are all correct in the initial HTML, but the visible markup arrives through the RSC payload, because `notFound()` works by throwing `NEXT_HTTP_ERROR_FALLBACK;404`.
 - **No offline support.** The web app manifest provides installable metadata, but nothing is cached for offline use.
 

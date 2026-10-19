@@ -1,3 +1,5 @@
+import { unstable_cache } from 'next/cache';
+
 import { normalizeUsername } from './username';
 
 export interface GitHubProfile {
@@ -110,6 +112,14 @@ export interface GitHubRequestOptions {
   maxRetries?: number;
   retryBaseDelayMs?: number;
   cache?: 'force-cache' | 'no-store';
+  /**
+   * How long the response may be reused from the shared cache, in seconds.
+   *
+   * The default is an hour. A caller that wants a shorter lifetime - a
+   * social card, which is drawn per share and must not be a day old - says so
+   * here instead of opting out of the cache entirely.
+   */
+  revalidate?: number;
 }
 
 type GitHubFetchInit = RequestInit & {
@@ -133,7 +143,41 @@ const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_BASE_DELAY_MS = 250;
 const MAX_RETRIES = 3;
 const MAX_RETRY_DELAY_MS = 5_000;
+/** The most repositories a caller may ask for in one call. */
 const MAX_REPOS = 100;
+/**
+ * The ranking window: how many of a user's repositories are downloaded and
+ * ranked locally.
+ *
+ * The core API cannot sort by stars, so the ranking happens here, over the
+ * window the listing returns - and that window is "most recently pushed", not
+ * "most starred". Thirty is five times the six cards the page shows, which
+ * leaves room for the forks and the archived repositories the ranking drops,
+ * while it costs about a third of the payload and a third of the validation a
+ * full hundred-repository page would.
+ *
+ * The trade-off is visible and deliberate: a user whose best repositories are
+ * stale - not pushed in months - and whose thirty most recent repositories
+ * are all forks or archived sees a different list than a hundred-repository
+ * window would show them. Thirty is where the page stops being about the six
+ * best repositories a user has and starts being about the six most recently
+ * touched ones.
+ */
+const REPO_RANKING_WINDOW = 30;
+/**
+ * How long a pinned-repository answer is reused before the lookup runs again.
+ *
+ * A pinned list changes when its owner changes it, which is not something
+ * that happens between two page views, and the GraphQL API spends a point of
+ * the token's quota on every query. Ten minutes keeps a profile's pinned list
+ * fresh enough to be called current while answering six queries an hour
+ * instead of one per view.
+ */
+const PINNED_CACHE_SECONDS = 600;
+/** The shared cache lifetime of a GitHub response, in seconds. */
+const DEFAULT_REVALIDATE_SECONDS = 3600;
+/** The longest shared cache lifetime a caller may ask for, in seconds. */
+const MAX_REVALIDATE_SECONDS = 86_400;
 /**
  * Topics shown on a project card. The cap is applied where the data is parsed,
  * not where it is rendered, so the payload and the layout agree on one number:
@@ -176,9 +220,29 @@ function headers(contentType?: string): HeadersInit {
   return result;
 }
 
-/** The shared cache opt-out: either a hard no-store or an hourly revalidate. */
+/**
+ * The shared cache opt-out: either a hard no-store or a revalidated entry.
+ *
+ * The lifetime is the caller's to choose, within limits: `revalidate` says
+ * how long the response may be reused, and the default is an hour.
+ */
 function cacheInit(options: GitHubRequestOptions): Pick<GitHubFetchInit, 'next' | 'cache'> {
-  return options.cache === 'no-store' ? { cache: 'no-store' } : { next: { revalidate: 3600 } };
+  if (options.cache === 'no-store') return { cache: 'no-store' };
+  return { next: { revalidate: revalidateSeconds(options) } };
+}
+
+/**
+ * The cache lifetime of a request, in seconds.
+ *
+ * Zero is not a lifetime: it would mean "never reuse", which is what
+ * `cache: 'no-store'` is for, so the shortest entry here is a second.
+ */
+function revalidateSeconds(options: GitHubRequestOptions): number {
+  const requested = options.revalidate;
+  if (requested === undefined || !Number.isFinite(requested)) {
+    return DEFAULT_REVALIDATE_SECONDS;
+  }
+  return Math.min(MAX_REVALIDATE_SECONDS, Math.max(1, Math.floor(requested)));
 }
 
 function clampInteger(value: number | undefined, fallback: number, max: number): number {
@@ -540,6 +604,12 @@ function parseReposResponse(value: unknown): GitHubRepo[] {
  * ranks the fetched window locally. The window is the repositories most
  * recently pushed, capped at `MAX_PAGES` pages, which covers the great
  * majority of accounts exactly.
+ *
+ * The window is `REPO_RANKING_WINDOW` repositories wide, not a hundred: the
+ * page shows six, and every repository in the window is downloaded, parsed
+ * and validated before the ranking drops it. Thirty is wide enough to fill
+ * those six cards for the accounts that are not mostly forks, and it is a
+ * third of the transfer size of a full page.
  */
 async function fetchRepoWindow(
   login: string,
@@ -553,7 +623,7 @@ async function fetchRepoWindow(
       type: 'owner',
       sort: 'pushed',
       direction: 'desc',
-      per_page: String(MAX_REPOS),
+      per_page: String(REPO_RANKING_WINDOW),
       page: String(page),
     });
     const res = await githubGet(`/users/${encodeURIComponent(login)}/repos?${params.toString()}`, options);
@@ -569,7 +639,7 @@ async function fetchRepoWindow(
 
     collected.push(...repos);
     // A short page means there is nothing left to page through.
-    if (repos.length < MAX_REPOS) break;
+    if (repos.length < REPO_RANKING_WINDOW) break;
   }
 
   return collected;
@@ -699,6 +769,107 @@ export function describeFailure(error: unknown): string {
 }
 
 /**
+ * The pinned-repository query, without the cache in front of it.
+ *
+ * The cache lives one layer up; this is the request itself, so the cached
+ * copy and the uncached answer are the same code and cannot drift apart.
+ */
+async function requestPinnedRepos(
+  login: string,
+  options: GitHubRequestOptions
+): Promise<GitHubRepo[]> {
+  const res = await githubRequest(
+    `${BASE}${GRAPHQL_PATH}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        query: PINNED_REPOS_QUERY,
+        variables: { login, first: MAX_PINNED_REPOS },
+      }),
+    },
+    options
+  );
+  const body = await readJson(res);
+
+  try {
+    return parsePinnedResponse(body);
+  } catch (error) {
+    if (error instanceof GitHubError) throw error;
+    throw new GitHubUpstreamError({ status: res.status, cause: error });
+  }
+}
+
+/**
+ * The shared copy of the pinned list.
+ *
+ * `unstable_cache` is the data cache Next 16 still ships for work that is not
+ * a `fetch` call, and it is the right tool here for one reason: the fetch
+ * cache stores GET responses, while pinned items are GraphQL-only, so the
+ * query is a POST and a POST is not something the fetch cache keeps. Without
+ * this layer every profile view spends a GraphQL request and a point of the
+ * token's quota on the same answer.
+ *
+ * The key is the login, so every profile has its own entry, and an entry
+ * lives for `PINNED_CACHE_SECONDS`. A failed query is never cached: the
+ * callback throws, and a throw leaves the cache untouched.
+ */
+const getCachedPinnedRepos = unstable_cache(
+  (login: string) => requestPinnedRepos(login, {}),
+  ['github-pinned-repos'],
+  { revalidate: PINNED_CACHE_SECONDS, tags: ['github-pinned-repos'] }
+);
+
+/**
+ * Whether the failure is Next saying that there is no data cache here.
+ *
+ * The data cache exists inside a request or a render. Anywhere else - a
+ * script, a unit test - `unstable_cache` refuses to run and says so in the
+ * only way it can. That is not a failed GraphQL query, and treating it as
+ * one would turn a missing cache into a missing pinned list.
+ */
+function isCacheUnavailable(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('incrementalCache missing');
+}
+
+async function readPinnedRepos(login: string): Promise<GitHubRepo[]> {
+  try {
+    return await getCachedPinnedRepos(login);
+  } catch (error) {
+    if (!isCacheUnavailable(error)) throw error;
+    // Without a cache the lookup still works, it is simply not remembered
+    // between calls.
+    return requestPinnedRepos(login, {});
+  }
+}
+
+/**
+ * The lookups that are on their way.
+ *
+ * Two requests for the same profile that arrive at the same time share one
+ * GraphQL call instead of sending two, and neither of them is remembered
+ * after it fails: the entry is dropped as soon as the lookup settles, so the
+ * next visitor retries it rather than inheriting a broken answer.
+ */
+const inFlightPinnedLookups = new Map<string, Promise<GitHubRepo[]>>();
+
+function loadPinnedRepos(login: string): Promise<GitHubRepo[]> {
+  const running = inFlightPinnedLookups.get(login);
+  if (running) return running;
+
+  const lookup = readPinnedRepos(login);
+  inFlightPinnedLookups.set(login, lookup);
+  lookup.then(
+    () => {
+      inFlightPinnedLookups.delete(login);
+    },
+    () => {
+      inFlightPinnedLookups.delete(login);
+    }
+  );
+  return lookup;
+}
+
+/**
  * The user's own picks, or `null` for "use the fallback".
  *
  * This never throws, because a missing feature is a far better outcome than a
@@ -723,25 +894,13 @@ export async function getPinnedRepos(
   }
 
   try {
-    const res = await githubRequest(
-      `${BASE}${GRAPHQL_PATH}`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          query: PINNED_REPOS_QUERY,
-          variables: { login, first: MAX_PINNED_REPOS },
-        }),
-      },
-      options
-    );
-    const body = await readJson(res);
-
-    try {
-      return parsePinnedResponse(body);
-    } catch (error) {
-      if (error instanceof GitHubError) throw error;
-      throw new GitHubUpstreamError({ status: res.status, cause: error });
+    // An options object means the caller is driving the request itself - a
+    // different cache lifetime, a different retry budget - and the shared
+    // copy was written for the default request, so it is not used here.
+    if (Object.keys(options).length > 0) {
+      return await requestPinnedRepos(login, options);
     }
+    return await loadPinnedRepos(login);
   } catch (error) {
     // Warn, not error: the fallback renders a complete page, and `console.error`
     // would trip the Next.js dev error overlay for a handled degradation.

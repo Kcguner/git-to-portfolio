@@ -7,9 +7,9 @@ import { normalizeUsername } from "@/lib/username";
 
 // Image metadata routes receive route params but not page search params in
 // Next.js 16, so the language is carried as the generated image id
-// (`/<username>/opengraph-image/<locale>`) instead: one static URL per language,
-// which a social crawler can cache on its own, and one card rendered in the
-// language of the page that references it.
+// (`/<locale>/<username>/opengraph-image/<locale>`) instead: one static URL
+// per language, which a social crawler can cache on its own, and one card
+// rendered in the language of the page that references it.
 export function generateImageMetadata() {
   return LOCALES.map((locale) => ({
     id: locale,
@@ -26,7 +26,9 @@ const RATE_LIMIT_CACHE_SECONDS = 60;
 const NOT_FOUND_CACHE_SECONDS = 300;
 const INVALID_USERNAME_CACHE_SECONDS = 3600;
 
-type RouteParams = { username: string } | Promise<{ username: string }>;
+type RouteParams =
+  | { locale: string; username: string }
+  | Promise<{ locale: string; username: string }>;
 
 type ProfileImageProps = {
   params: RouteParams;
@@ -56,8 +58,15 @@ function isAuthenticated(): boolean {
 
 function getRequestOptions(): GitHubRequestOptions {
   if (isAuthenticated()) return {};
+  // An anonymous card used to opt out of the shared cache entirely, so every
+  // share of a profile URL re-fetched the profile and its repositories and
+  // redrew the PNG from scratch. The data behind a card is the same data the
+  // profile page shows, and it is kept for as long as the card itself is:
+  // a minute is short enough for a card to be current and long enough that
+  // the second visitor of the same profile does not pay for the first one's
+  // trip to GitHub.
   return {
-    cache: "no-store",
+    revalidate: UNAUTHENTICATED_CACHE_SECONDS,
     maxRetries: 1,
     timeoutMs: 5000,
   };
@@ -277,6 +286,10 @@ export default async function ProfileOpenGraphImage({ params, id }: ProfileImage
   let repos: GitHubRepo[] = [];
 
   try {
+    // The two lookups stay in sequence here. A card is drawn for every share
+    // of a profile URL, and the second one is only worth asking for when the
+    // first one found a person: a card for a login that does not exist must
+    // not spend a second request on the anonymous quota to learn that twice.
     profile = await getProfile(username, requestOptions);
     repos = await getTopRepos(username, 3, requestOptions);
     return isAuthenticated()

@@ -1,5 +1,10 @@
 import type { MetadataRoute } from "next";
-import { getProfilePathname, LOCALES, withLocale, type Locale } from "@/lib/i18n";
+import {
+  getProfileBasePathname,
+  LOCALES,
+  withBaseLocale,
+  type Locale,
+} from "@/lib/i18n";
 import { getAbsoluteLocaleAlternates } from "@/lib/seo";
 import { getSiteUrl } from "@/lib/site";
 
@@ -33,7 +38,14 @@ function buildEntry(
     // hreflang cluster, which is what the protocol asks for: a localized URL
     // that is only reachable through another URL's alternates is discovered
     // late, if at all.
-    url: `${getSiteUrl()}${withLocale(pathname, locale)}`,
+    //
+    // The URL is built from the **base** path with `withBaseLocale()`, which
+    // only puts the locale in front of it. The alternates below are built from
+    // the same base path, so the two halves of an entry always describe the
+    // same page — a login that happens to be called `en` is published under
+    // `/tr/en`, `/en/en`, `/de/en` and `/es/en`, never under the four
+    // language homes.
+    url: `${getSiteUrl()}${withBaseLocale(pathname, locale)}`,
     changeFrequency,
     priority,
     alternates: { languages: getAbsoluteLocaleAlternates(pathname) },
@@ -55,7 +67,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // keeps the top priority; the profiles share the lower one.
     ...buildLocaleEntries("/", "weekly", 1),
     ...PROFILE_USERNAMES.flatMap((username) =>
-      buildLocaleEntries(getProfilePathname(username), "weekly", 0.8)
+      buildLocaleEntries(getProfileBasePathname(username), "weekly", 0.8)
     ),
   ];
 }

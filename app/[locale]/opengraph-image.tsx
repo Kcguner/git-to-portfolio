@@ -3,13 +3,19 @@ import { getDictionary } from "@/lib/i18n";
 import { getLocaleFromImageId, SITE_NAME, SOCIAL_IMAGE_SIZE } from "@/lib/seo";
 
 /**
- * One card per language, each with its own static URL (`/opengraph-image/<id>`).
+ * One card per language, each with its own static URL
+ * (`/<locale>/opengraph-image/<id>`).
  *
  * The locale is a path segment rather than a page query parameter because
  * social crawlers request the image on its own and may drop the query string.
  * Separate URLs also mean each language's card is generated once at build time
  * and cached separately, instead of one shared response that would have to be
  * rendered per request and could be cached in the wrong language.
+ *
+ * The card lives under the language it is written in, so the URL says which
+ * language the card is in twice — once in the segment the route is nested
+ * under, once in the generated id. The id is what the card is actually drawn
+ * from, and it is the one the metadata helpers point at.
  */
 export function generateImageMetadata() {
   return (["tr", "en", "de", "es"] as const).map((locale) => ({

@@ -52,17 +52,25 @@
     min-width: 0;
     background: rgb(var(--color-background));
     color: rgb(var(--color-text-primary));
-    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    /* The families are loaded by next/font/local and reach the stylesheet
+       as CSS variables. A variable carries the webfont, the metric-adjusted
+       fallback next/font derives from it, and the system's own faces behind
+       that. */
+    font-family: var(--font-inter);
   }
 
   /* Headings are the display serif; the body copy stays in the sans. The
-     italic @font-face of the same family is what an accent word inside a
-     heading uses, so `font-style: italic` needs no extra stack. */
+     accent word inside a heading is a heavier weight of the same family,
+     so the heading needs no extra stack of its own.
+
+     The serif is loaded by the one page that uses it (app/fonts/fraunces.ts),
+     so the variable is only defined there; on the pages that do not, the
+     declaration is dropped and the heading keeps the sans of the body. */
   h1,
   h2,
   h3,
   h4 {
-    font-family: "Fraunces", Georgia, "Times New Roman", ui-serif, serif;
+    font-family: var(--font-fraunces);
     letter-spacing: -0.01em;
   }
 
@@ -225,7 +233,7 @@
     border-radius: 2px;
     background: transparent;
     color: rgb(var(--color-text-secondary));
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-family: var(--font-jetbrains-mono);
     font-size: 11px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -233,7 +241,7 @@
 
   .section-label {
     color: rgb(var(--color-accent));
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-family: var(--font-jetbrains-mono);
     font-size: 11px;
     letter-spacing: 0.15em;
     text-transform: uppercase;

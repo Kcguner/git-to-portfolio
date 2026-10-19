@@ -5,11 +5,13 @@ import { Suspense } from 'react';
 import { getProfile, GitHubUserNotFoundError } from '@/lib/github';
 import type { GitHubProfile } from '@/lib/github';
 import {
+  DEFAULT_LOCALE,
   getDictionary,
-  getLocale,
+  getProfileBasePathname,
   getProfilePathname,
-  withLocale,
-  type SearchParams,
+  isLocale,
+  withBaseLocale,
+  type Locale,
 } from '@/lib/i18n';
 import {
   getAlternateOpenGraphLocales,
@@ -30,24 +32,83 @@ import ReposSkeleton from '@/components/ReposSkeleton';
 import ShareButton from '@/components/ShareButton';
 import SiteHeader from '@/components/SiteHeader';
 
+/**
+ * The page is cached for an hour and then regenerated in the background.
+ *
+ * Nothing below reads a request-time value any more — the locale is a path
+ * segment and the username is a path segment — so the rendered page can be
+ * stored and served from the cache, and only the page that is actually asked
+ * for is ever built.
+ */
 export const revalidate = 3600;
 
+/**
+ * No profile is prerendered at build time.
+ *
+ * There is no list of GitHub accounts to prerender — the site publishes one
+ * page per account that anyone asks for — so this returns an empty array.
+ * That is the documented way to tell Next.js that the paths of this route
+ * are generated the first time they are visited and then cached (and
+ * revalidated on the interval above), instead of being rendered per request.
+ */
+export async function generateStaticParams(): Promise<Array<{ username: string }>> {
+  return [];
+}
+
 type PageProps = {
-  params: Promise<{ username: string }>;
-  searchParams: Promise<SearchParams>;
+  params: Promise<{ locale: string; username: string }>;
 };
 
-type ResolvedUsername = {
+type ResolvedRoute = {
+  /** The locale segment exactly as it came in, before it was validated. */
+  rawLocale: string;
+  locale: Locale;
   requested: string;
-  normalized: string;
+  normalized: string | null;
 };
 
-async function resolveUsername(
-  params: PageProps['params']
-): Promise<ResolvedUsername | null> {
-  const { username: requested } = await params;
+/**
+ * The two path segments of this route.
+ *
+ * The locale is validated against the four languages the site serves; the
+ * username is normalized the way GitHub normalizes it. An unsupported locale
+ * is not a page of this site, and an unusable username is not a person.
+ *
+ * The `locale` in the result is a **validated** fallback, not a silent one:
+ * for a segment the site does not serve it is the default locale, which is
+ * exactly the language the not-found page is rendered in. A caller that has
+ * to *refuse* the segment checks `isLocale(rawLocale)` itself — the metadata
+ * and the body below both do.
+ */
+async function resolveRoute(params: PageProps['params']): Promise<ResolvedRoute> {
+  const { locale: rawLocale, username: requested } = await params;
   const normalized = normalizeUsername(requested);
-  return normalized ? { requested, normalized } : null;
+
+  return {
+    rawLocale,
+    locale: isLocale(rawLocale) ? rawLocale : DEFAULT_LOCALE,
+    requested,
+    normalized,
+  };
+}
+
+/**
+ * The canonical URL of a profile page and its hreflang cluster.
+ *
+ * The cluster is built from the **base** path — the bare username path — so
+ * the alternates never have to guess whether the first segment is a language
+ * or a login: the account called `en` is published under `/tr/en`, `/en/en`,
+ * `/de/en` and `/es/en`, not under the four language homes.
+ *
+ * The canonical is the localized URL of this page, built from the canonical
+ * login rather than read back out of a path. Both halves come from the same
+ * helper, so they can never describe two different pages.
+ */
+function getProfileAlternates(
+  canonicalUsername: string,
+  locale: Locale,
+): { canonical: string; languages: Record<string, string> } {
+  return getLocaleAlternatesMetadata(getProfileBasePathname(canonicalUsername), locale);
 }
 
 /**
@@ -55,25 +116,27 @@ async function resolveUsername(
  * same profile lookup as the page below, and turns any failure into a
  * localized no-index title rather than a promise of a page that is not there.
  */
-export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
-  const [resolvedUsername, query] = await Promise.all([resolveUsername(params), searchParams]);
-  const locale = getLocale(query);
-  const dictionary = getDictionary(locale);
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { rawLocale, locale, normalized } = await resolveRoute(params);
 
-  if (!resolvedUsername) {
+  // The body below answers an unsupported locale segment and an unusable
+  // username with a 404, so the metadata must not describe a page that is not
+  // there. The title is the one the not-found page is rendered with, in the
+  // language that page answers in.
+  if (!isLocale(rawLocale) || !normalized) {
     return {
-      title: dictionary.metadata.userNotFoundTitle,
+      title: getDictionary(locale).metadata.userNotFoundTitle,
       robots: NO_INDEX_ROBOTS,
     };
   }
 
-  const username = resolvedUsername.normalized;
+  const username = normalized;
+  const dictionary = getDictionary(locale);
 
   try {
     const profile = await getProfile(username);
     const canonicalUsername = normalizeUsername(profile.login) ?? username;
-    const pathname = getProfilePathname(canonicalUsername);
-    const alternates = getLocaleAlternatesMetadata(pathname, locale);
+    const alternates = getProfileAlternates(canonicalUsername, locale);
     const displayName = profile.name?.trim() || profile.login;
     const description = profile.bio?.trim() || dictionary.metadata.portfolioDescription(displayName);
     const title = dictionary.metadata.portfolioTitle(displayName);
@@ -118,21 +181,25 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   }
 }
 
-export default async function UserPage({ params, searchParams }: PageProps) {
+export default async function UserPage({ params }: PageProps) {
   // Everything above the Suspense boundary below runs before the response is
   // committed, which is what makes the two outcomes real HTTP status lines: a
   // missing user is a `404` and a non-canonical login is a `308`. Adding a
   // route-level `loading.tsx` or moving a lookup below the boundary would turn
   // both into a streamed `200` with the same UI, so nothing that can suspend is
   // allowed to cross that line.
-  const [resolvedUsername, query] = await Promise.all([resolveUsername(params), searchParams]);
-  if (!resolvedUsername) notFound();
+  //
+  // The locale is a path segment now, so there is no `searchParams` to read
+  // here any more: reading one would make the route request-time again and
+  // there would be nothing left for `revalidate` to cache.
+  const { rawLocale, locale, requested, normalized } = await resolveRoute(params);
+  if (!isLocale(rawLocale)) notFound();
+  if (!normalized) notFound();
 
-  const locale = getLocale(query);
   const dictionary = getDictionary(locale);
-  const username = resolvedUsername.normalized;
-  if (resolvedUsername.requested !== username) {
-    permanentRedirect(withLocale(getProfilePathname(username), locale, query));
+  const username = normalized;
+  if (requested !== username) {
+    permanentRedirect(getProfilePathname(username, locale));
   }
 
   let profile: GitHubProfile;
@@ -145,16 +212,15 @@ export default async function UserPage({ params, searchParams }: PageProps) {
 
   const canonicalUsername = normalizeUsername(profile.login) ?? username;
   if (canonicalUsername !== username) {
-    permanentRedirect(withLocale(getProfilePathname(canonicalUsername), locale, query));
+    permanentRedirect(getProfilePathname(canonicalUsername, locale));
   }
 
   const displayName = profile.name?.trim() || profile.login;
   const description = profile.bio?.trim() || dictionary.metadata.portfolioDescription(displayName);
   const shareTitle = dictionary.metadata.portfolioTitle(displayName);
-  const pathname = getProfilePathname(canonicalUsername);
   // The localized, canonical URL of this page: what gets shared, printed and
   // described in structured data.
-  const shareUrl = getLocaleAlternatesMetadata(pathname, locale).canonical;
+  const shareUrl = getProfileAlternates(canonicalUsername, locale).canonical;
 
   return (
     <div className="relative min-h-screen">
@@ -163,7 +229,7 @@ export default async function UserPage({ params, searchParams }: PageProps) {
         actions={(
           <div className="no-print flex shrink-0 items-center gap-2">
             <Link
-              href={withLocale('/', locale)}
+              href={withBaseLocale('/', locale)}
               className="hidden h-9 shrink-0 items-center gap-2 border border-border bg-surface-elevated px-3 text-[13px] font-medium text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary md:inline-flex"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

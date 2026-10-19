@@ -2,25 +2,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigationMocks = vi.hoisted(() => ({
   push: vi.fn(),
+  notFound: vi.fn(() => {
+    throw new Error("NEXT_NOT_FOUND");
+  }),
 }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/",
+  usePathname: () => "/en",
   useRouter: () => ({ push: navigationMocks.push }),
   useSearchParams: () => new URLSearchParams(),
+  notFound: navigationMocks.notFound,
 }));
 
-import HomePage, { generateMetadata as HomeMetadata } from "../../app/page";
+import HomePage, { generateMetadata as HomeMetadata } from "../../app/[locale]/page";
 import manifest from "../../app/manifest";
 import robots from "../../app/robots";
 import sitemap from "../../app/sitemap";
 import {
+  dictionaries,
   getDictionary,
   LOCALES,
   LOCALE_TAGS,
   OPEN_GRAPH_LOCALES,
-  withLocale,
-  dictionaries,
+  type Locale,
 } from "../../lib/i18n";
 import { EXAMPLES } from "../../lib/examples";
 import { SITE_NAME, SITE_NAME_QUERY } from "../../lib/seo";
@@ -39,6 +43,11 @@ function restoreEnv(name: string, value: string | undefined) {
   else process.env[name] = value;
 }
 
+/** The params of a localized home page. */
+function homeParams(locale: string) {
+  return Promise.resolve({ locale });
+}
+
 describe("home page", () => {
   afterEach(() => {
     restoreEnv("SITE_URL", originalSiteUrl);
@@ -46,7 +55,7 @@ describe("home page", () => {
 
   it("renders the selected locale, examples, and all workflow steps", async () => {
     process.env.SITE_URL = "https://portfolio.example.test/";
-    const element = await HomePage({ searchParams: Promise.resolve({ lang: "en" }) });
+    const element = await HomePage({ params: homeParams("en") });
     const html = await import("react-dom/server").then(({ renderToStaticMarkup }) =>
       renderToStaticMarkup(element)
     );
@@ -54,11 +63,11 @@ describe("home page", () => {
     expect(getSiteUrl()).toBe("https://portfolio.example.test");
     expect(html).toContain("Your portfolio in three steps");
 
-    // Derived from EXAMPLES so adding or removing an example cannot leave a
-    // stale expectation behind.
-    expect(EXAMPLES.length).toBeGreaterThan(0);
+    // The language is a path segment now, so the example links are localized
+    // addresses rather than a query parameter.
+    expect(html).toContain('href="/en"');
     for (const example of EXAMPLES) {
-      expect(html).toContain(`/${example.username}?lang=en`);
+      expect(html).toContain(`href="/en/${example.username}"`);
       expect(html).toContain(dictionaries.en.home.exampleDescriptions[example.descriptionKey]);
     }
   });
@@ -69,24 +78,24 @@ describe("home page", () => {
     expect(EXAMPLES[0].descriptionKey).toBe("kcguner");
   });
 
-  it("falls back to Turkish for an unsupported locale", async () => {
-    const element = await HomePage({
-      searchParams: Promise.resolve({ lang: ["en", "de"] }),
-    });
-    const { renderToStaticMarkup } = await import("react-dom/server");
-    const html = renderToStaticMarkup(element);
+  it("answers an unsupported locale segment with a not-found", async () => {
+    // A segment that is not one of the four languages is not a page of this
+    // site: rendering the default locale under a foreign URL would publish a
+    // document that does not exist.
+    await expect(HomePage({ params: homeParams("fr") })).rejects.toThrow(
+      "NEXT_NOT_FOUND",
+    );
 
-    expect(html).toContain("Üç adımda portföy");
-    expect(html).toContain('href="/torvalds"');
+    expect(navigationMocks.notFound).toHaveBeenCalledOnce();
   });
 
   it("draws the page as a title sheet with sharp cells and no motion", async () => {
-    const element = await HomePage({ searchParams: Promise.resolve({ lang: "en" }) });
+    const element = await HomePage({ params: homeParams("en") });
     const { renderToStaticMarkup } = await import("react-dom/server");
     const html = renderToStaticMarkup(element);
 
     // The name is set on two lines at poster size, and the split is a line
-    // break rather than two words: the heading keeps the whole name.
+    // break rather than a word: the heading keeps the whole name.
     expect(html).toContain('<h1 aria-label="Git-to-Portfolio"');
     expect(html).toContain('class="block">Git-to-</span>');
     expect(html).toContain(">Portfolio</span>");
@@ -122,10 +131,13 @@ describe("home page", () => {
     expect(footer).toContain(home.howLink);
     expect(footer).toContain(home.source);
     expect(footer).toContain(home.copyright(2026).replace("2026", new Date().getFullYear().toString()));
+    // The documentation link points at this language's home, not at the bare
+    // root the Proxy would have to negotiate again.
+    expect(footer).toContain('href="/en#nasil-calisir"');
   });
 
   it("builds localized home canonical, hreflang and social metadata", async () => {
-    const metadata = await HomeMetadata({ searchParams: Promise.resolve({ lang: "de" }) });
+    const metadata = await HomeMetadata({ params: homeParams("de") });
 
     // The home page owns its full title: the brand plus what it does, in the
     // words a search query uses, and never wrapped in the layout's
@@ -138,18 +150,18 @@ describe("home page", () => {
     expect(metadata.description).toBe(dictionaries.de.metadata.homeDescription);
     expect(metadata.keywords).toEqual(dictionaries.de.metadata.homeKeywords);
     expect(metadata.alternates).toEqual({
-      canonical: "https://git-to-portfolio.vercel.app/?lang=de",
+      canonical: "https://git-to-portfolio.vercel.app/de",
       languages: {
-        "tr-TR": "https://git-to-portfolio.vercel.app/",
-        "en-US": "https://git-to-portfolio.vercel.app/?lang=en",
-        "de-DE": "https://git-to-portfolio.vercel.app/?lang=de",
-        "es-ES": "https://git-to-portfolio.vercel.app/?lang=es",
-        "x-default": "https://git-to-portfolio.vercel.app/",
+        "tr-TR": "https://git-to-portfolio.vercel.app/tr",
+        "en-US": "https://git-to-portfolio.vercel.app/en",
+        "de-DE": "https://git-to-portfolio.vercel.app/de",
+        "es-ES": "https://git-to-portfolio.vercel.app/es",
+        "x-default": "https://git-to-portfolio.vercel.app/tr",
       },
     });
     expect(metadata.openGraph).toMatchObject({
       type: "website",
-      url: "https://git-to-portfolio.vercel.app/?lang=de",
+      url: "https://git-to-portfolio.vercel.app/de",
       locale: "de_DE",
       // Every other language the site serves, so a share gets the right card.
       alternateLocale: ["tr_TR", "en_US", "es_ES"],
@@ -159,7 +171,7 @@ describe("home page", () => {
       // One card, the one for this page's language, with a localized alt.
       images: [
         {
-          url: "https://git-to-portfolio.vercel.app/opengraph-image/de",
+          url: "https://git-to-portfolio.vercel.app/de/opengraph-image/de",
           alt: dictionaries.de.metadata.ogImage.alt,
           type: "image/png",
           width: 1200,
@@ -172,14 +184,14 @@ describe("home page", () => {
 
   it("gives every language its own card, description and keywords", async () => {
     for (const locale of LOCALES) {
-      const metadata = await HomeMetadata({
-        searchParams: Promise.resolve({ lang: locale }),
-      });
+      const metadata = await HomeMetadata({ params: homeParams(locale) });
       const [image] = (metadata.twitter?.images ?? []) as Array<{ url: string; alt: string }>;
 
-      // The card is addressed by the language, not by a query parameter, so a
-      // crawler that drops the page query still gets a rendered image.
-      expect(image?.url).toBe(`https://git-to-portfolio.vercel.app/opengraph-image/${locale}`);
+      // The card is addressed by the language, in the path, so a crawler that
+      // drops the page query still gets a rendered image.
+      expect(image?.url).toBe(
+        `https://git-to-portfolio.vercel.app/${locale}/opengraph-image/${locale}`,
+      );
       expect(image?.alt).toBe(getDictionary(locale).metadata.ogImage.alt);
       expect(metadata.openGraph?.locale).toBe(
         OPEN_GRAPH_LOCALES[locale],
@@ -193,9 +205,7 @@ describe("home page", () => {
   // logotype is a drawing decision and is not what gets searched.
   it("puts the queried brand spelling in every language's title and subheading", async () => {
     for (const locale of LOCALES) {
-      const metadata = await HomeMetadata({
-        searchParams: Promise.resolve({ lang: locale }),
-      });
+      const metadata = await HomeMetadata({ params: homeParams(locale) });
       const title = (metadata.title as { absolute: string }).absolute;
       const { homeTitle, homeDescription, homeKeywords } = getDictionary(locale).metadata;
       const { heroBefore, heroHighlight, heroAfter } = getDictionary(locale).home;
@@ -214,9 +224,7 @@ describe("home page", () => {
 
       // The hero is the page's subheading, so the same phrase appears in the
       // rendered body as well as in the metadata.
-      const html = await renderPage(
-        await HomePage({ searchParams: Promise.resolve({ lang: locale }) }),
-      );
+      const html = await renderPage(await HomePage({ params: homeParams(locale) }));
       expect(html).toContain(`<h2`);
       expect(html).toContain(`<h1`);
       expect(`${heroBefore}${heroHighlight}${heroAfter}`).toContain(SITE_NAME_QUERY);
@@ -226,9 +234,7 @@ describe("home page", () => {
 
   it("describes the visible steps as structured data in the page's language", async () => {
     for (const locale of LOCALES) {
-      const element = await HomePage({
-        searchParams: Promise.resolve({ lang: locale }),
-      });
+      const element = await HomePage({ params: homeParams(locale) });
       const { renderToStaticMarkup } = await import("react-dom/server");
       const html = renderToStaticMarkup(element);
       const dictionary = getDictionary(locale);
@@ -258,12 +264,12 @@ describe("home page", () => {
     }
   });
 
-  it("canonicalizes the default locale to the clean home URL", async () => {
-    const metadata = await HomeMetadata({ searchParams: Promise.resolve({ lang: "tr" }) });
+  it("canonicalizes the default locale to its own path", async () => {
+    const metadata = await HomeMetadata({ params: homeParams("tr") });
 
-    expect(metadata.alternates?.canonical).toBe("https://git-to-portfolio.vercel.app/");
+    expect(metadata.alternates?.canonical).toBe("https://git-to-portfolio.vercel.app/tr");
     expect(metadata.openGraph).toMatchObject({
-      url: "https://git-to-portfolio.vercel.app/",
+      url: "https://git-to-portfolio.vercel.app/tr",
       locale: "tr_TR",
     });
   });
@@ -271,11 +277,11 @@ describe("home page", () => {
   it("resolves home metadata URLs against a configured site origin", async () => {
     process.env.SITE_URL = "https://portfolio.example.test/";
 
-    const metadata = await HomeMetadata({ searchParams: Promise.resolve({ lang: "es" }) });
+    const metadata = await HomeMetadata({ params: homeParams("es") });
 
-    expect(metadata.alternates?.canonical).toBe("https://portfolio.example.test/?lang=es");
+    expect(metadata.alternates?.canonical).toBe("https://portfolio.example.test/es");
     expect(metadata.alternates?.languages?.["es-ES"]).toBe(
-      "https://portfolio.example.test/?lang=es"
+      "https://portfolio.example.test/es"
     );
   });
 });
@@ -297,19 +303,54 @@ describe("metadata routes", () => {
     });
   });
 
+  /**
+   * The four localized addresses of one page, written out.
+   *
+   * These are literals on purpose: deriving them from the helper under test
+   * would make the assertion follow a broken helper instead of pinning the
+   * contract.
+   */
+  const LOCALIZED_PATHS: Record<string, Record<Locale, string>> = {
+    "/": { tr: "/tr", en: "/en", de: "/de", es: "/es" },
+    "/kcguner": {
+      tr: "/tr/kcguner",
+      en: "/en/kcguner",
+      de: "/de/kcguner",
+      es: "/es/kcguner",
+    },
+    "/torvalds": {
+      tr: "/tr/torvalds",
+      en: "/en/torvalds",
+      de: "/de/torvalds",
+      es: "/es/torvalds",
+    },
+    "/gaearon": {
+      tr: "/tr/gaearon",
+      en: "/en/gaearon",
+      de: "/de/gaearon",
+      es: "/es/gaearon",
+    },
+    "/yyx990803": {
+      tr: "/tr/yyx990803",
+      en: "/en/yyx990803",
+      de: "/de/yyx990803",
+      es: "/es/yyx990803",
+    },
+  };
+
   it("builds the home and example profile sitemap without a fabricated lastmod", () => {
     const entries = sitemap();
-    const pathnames = ["/", "/kcguner", "/torvalds", "/gaearon", "/yyx990803"];
+    const pathnames = Object.keys(LOCALIZED_PATHS);
 
     // One entry per language, not one entry per page: a localized URL that is
     // only reachable as an alternates href of its siblings is discovered late,
     // if at all.
     expect(entries).toHaveLength(pathnames.length * LOCALES.length);
     expect(entries.slice(0, LOCALES.length).map(({ url }) => url)).toEqual([
-      "https://metadata.example.test/portfolio/",
-      "https://metadata.example.test/portfolio/?lang=en",
-      "https://metadata.example.test/portfolio/?lang=de",
-      "https://metadata.example.test/portfolio/?lang=es",
+      "https://metadata.example.test/portfolio/tr",
+      "https://metadata.example.test/portfolio/en",
+      "https://metadata.example.test/portfolio/de",
+      "https://metadata.example.test/portfolio/es",
     ]);
     expect(entries.every(({ changeFrequency }) => changeFrequency === "weekly")).toBe(true);
     expect(entries.slice(0, LOCALES.length).every(({ priority }) => priority === 1)).toBe(
@@ -331,32 +372,31 @@ describe("metadata routes", () => {
     // home page. The remaining profiles are no longer showcased, but they are
     // still real indexable pages and dropping them would lose long-tail
     // discovery, so the list is not a projection of EXAMPLES.
-    expect(urls).toContain("https://metadata.example.test/portfolio/kcguner");
-    expect(urls).toContain("https://metadata.example.test/portfolio/gaearon");
-    expect(urls).toContain("https://metadata.example.test/portfolio/yyx990803");
+    expect(urls).toContain("https://metadata.example.test/portfolio/tr/kcguner");
+    expect(urls).toContain("https://metadata.example.test/portfolio/en/gaearon");
+    expect(urls).toContain("https://metadata.example.test/portfolio/de/yyx990803");
   });
 
   it("exposes absolute hreflang alternates for every supported locale plus x-default", () => {
     const siteUrl = "https://metadata.example.test/portfolio";
-    const pathnames = ["/", "/kcguner", "/torvalds", "/gaearon", "/yyx990803"] as const;
     const entries = sitemap();
 
-    expect(entries).toHaveLength(pathnames.length * LOCALES.length);
+    expect(entries).toHaveLength(Object.keys(LOCALIZED_PATHS).length * LOCALES.length);
 
-    pathnames.forEach((pathname, index) => {
+    Object.entries(LOCALIZED_PATHS).forEach(([pathname, localizedPaths], index) => {
       const localized = entries.slice(index * LOCALES.length, (index + 1) * LOCALES.length);
       const expectedLanguages = {
-        "tr-TR": `${siteUrl}${withLocale(pathname, "tr")}`,
-        "en-US": `${siteUrl}${withLocale(pathname, "en")}`,
-        "de-DE": `${siteUrl}${withLocale(pathname, "de")}`,
-        "es-ES": `${siteUrl}${withLocale(pathname, "es")}`,
-        "x-default": `${siteUrl}${withLocale(pathname, "tr")}`,
+        "tr-TR": `${siteUrl}${localizedPaths.tr}`,
+        "en-US": `${siteUrl}${localizedPaths.en}`,
+        "de-DE": `${siteUrl}${localizedPaths.de}`,
+        "es-ES": `${siteUrl}${localizedPaths.es}`,
+        "x-default": `${siteUrl}${localizedPaths.tr}`,
       };
 
       // Every language's entry repeats the whole cluster, and each one is its
       // own localized URL.
       expect(localized.map(({ url }) => url)).toEqual(
-        LOCALES.map((locale) => `${siteUrl}${withLocale(pathname, locale)}`),
+        LOCALES.map((locale) => `${siteUrl}${localizedPaths[locale]}`),
       );
 
       localized.forEach((entry, localeIndex) => {
@@ -366,8 +406,8 @@ describe("metadata routes", () => {
           ...LOCALES.map((locale) => LOCALE_TAGS[locale]),
           "x-default",
         ]);
-        expect(languages).toEqual(expectedLanguages);
-        expect(entry.url).toBe(`${siteUrl}${withLocale(pathname, LOCALES[localeIndex])}`);
+        expect(languages, pathname).toEqual(expectedLanguages);
+        expect(entry.url).toBe(`${siteUrl}${localizedPaths[LOCALES[localeIndex]!]}`);
 
         for (const [tag, url] of Object.entries(languages ?? {}) as Array<[string, string]>) {
           // Absolute and parseable, with the repeated slashes of
@@ -386,12 +426,26 @@ describe("metadata routes", () => {
     const [home] = sitemap();
 
     expect(home?.alternates?.languages).toEqual({
-      "tr-TR": "https://metadata.example.test/portfolio/",
-      "en-US": "https://metadata.example.test/portfolio/?lang=en",
-      "de-DE": "https://metadata.example.test/portfolio/?lang=de",
-      "es-ES": "https://metadata.example.test/portfolio/?lang=es",
-      "x-default": "https://metadata.example.test/portfolio/",
+      "tr-TR": "https://metadata.example.test/portfolio/tr",
+      "en-US": "https://metadata.example.test/portfolio/en",
+      "de-DE": "https://metadata.example.test/portfolio/de",
+      "es-ES": "https://metadata.example.test/portfolio/es",
+      "x-default": "https://metadata.example.test/portfolio/tr",
     });
+  });
+
+  it("gives every entry a URL that is one of its own hreflang alternates", () => {
+    // The two halves of an entry are built from the same base path, so the
+    // entry's own URL is always one of the URLs it points at. A login that
+    // happens to be called `en` would break this if the entry's URL were
+    // built by *replacing* a locale segment instead of adding one: it would
+    // be published as the language home while its alternates pointed at the
+    // account.
+    for (const entry of sitemap()) {
+      const languages = Object.values(entry.alternates?.languages ?? {});
+
+      expect(languages).toContain(entry.url);
+    }
   });
 });
 
@@ -402,7 +456,10 @@ describe("web app manifest", () => {
 
     expect(result.name).toBe("Git-to-Portfolio");
     expect(result.short_name).toBe("Git-to-Portfolio");
-    expect(result.start_url).toBe("/");
+    // The installed app starts on a localized address: the bare root is
+    // negotiated by the Proxy, the manifest names a language outright.
+    expect(result.start_url).toBe("/tr");
+    expect(result.id).toBe("/tr");
     expect(result.scope).toBe("/");
     expect(result.display).toBe("standalone");
     expect(result.theme_color).toBe("#0a0a0c");

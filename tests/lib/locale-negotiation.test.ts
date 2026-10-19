@@ -2,30 +2,32 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_LOCALE, LOCALES } from '../../lib/i18n';
 import {
-  getLocaleFromHeaderValue,
-  LOCALE_HEADER,
   negotiateLocaleFromAcceptLanguage,
+  readLocaleCookie,
   resolveRequestLocale,
+  SITE_LOCALE_COOKIE,
 } from '../../lib/locale-negotiation';
 
-describe('locale header contract', () => {
-  it('never exposes the locale through a NEXT_PUBLIC_ variable', () => {
-    expect(LOCALE_HEADER).toBe('x-site-locale');
-    expect(LOCALE_HEADER.startsWith('next_public_')).toBe(false);
+describe('locale cookie contract', () => {
+  it('names the cookie the proxy writes', () => {
+    expect(SITE_LOCALE_COOKIE).toBe('site-locale');
   });
 
-  it('reads only supported locales back and defaults everything else', () => {
-    expect(getLocaleFromHeaderValue('de')).toBe('de');
+  it('reads only supported locales back', () => {
+    expect(readLocaleCookie('de')).toBe('de');
     for (const locale of LOCALES) {
-      expect(getLocaleFromHeaderValue(locale)).toBe(locale);
+      expect(readLocaleCookie(locale)).toBe(locale);
     }
+  });
 
-    expect(getLocaleFromHeaderValue(null)).toBe(DEFAULT_LOCALE);
-    expect(getLocaleFromHeaderValue(undefined)).toBe(DEFAULT_LOCALE);
-    expect(getLocaleFromHeaderValue('')).toBe(DEFAULT_LOCALE);
-    expect(getLocaleFromHeaderValue('EN')).toBe(DEFAULT_LOCALE);
-    expect(getLocaleFromHeaderValue('fr')).toBe(DEFAULT_LOCALE);
-    expect(getLocaleFromHeaderValue('en; charset=utf-8')).toBe(DEFAULT_LOCALE);
+  it('returns null for an absent or unusable value', () => {
+    expect(readLocaleCookie(undefined)).toBeNull();
+    expect(readLocaleCookie(null)).toBeNull();
+    expect(readLocaleCookie('')).toBeNull();
+    expect(readLocaleCookie('   ')).toBeNull();
+    expect(readLocaleCookie('EN')).toBeNull();
+    expect(readLocaleCookie('fr')).toBeNull();
+    expect(readLocaleCookie('en; charset=utf-8')).toBeNull();
   });
 });
 
@@ -113,41 +115,34 @@ describe('Accept-Language negotiation', () => {
 });
 
 describe('request locale resolution', () => {
-  it('prefers a single supported lang query value over Accept-Language', () => {
-    expect(
-      resolveRequestLocale({ lang: ['en'], acceptLanguage: 'de-DE,de;q=0.9' })
-    ).toBe('en');
+  it('prefers the remembered cookie over Accept-Language', () => {
+    // The cookie is an explicit choice, and an explicit choice outranks the
+    // browser's default.
+    expect(resolveRequestLocale({ cookie: 'en', acceptLanguage: 'de-DE,de;q=0.9' })).toBe(
+      'en'
+    );
   });
 
-  it('negotiates from Accept-Language when no lang query exists', () => {
+  it('negotiates from Accept-Language when there is no cookie', () => {
     expect(resolveRequestLocale({ acceptLanguage: 'de-DE,de;q=0.9,en;q=0.8' })).toBe(
       'de'
     );
   });
 
+  it('ignores an unusable cookie and negotiates instead', () => {
+    expect(resolveRequestLocale({ cookie: 'fr', acceptLanguage: 'de' })).toBe('de');
+    expect(resolveRequestLocale({ cookie: '', acceptLanguage: 'de' })).toBe('de');
+  });
+
   it('falls back to the default when neither signal is usable', () => {
     expect(resolveRequestLocale({ acceptLanguage: 'fr-FR' })).toBe(DEFAULT_LOCALE);
     expect(resolveRequestLocale({})).toBe(DEFAULT_LOCALE);
-  });
-
-  it('defaults rather than negotiating when lang is present but unusable', () => {
-    // Mirrors getLocaleFromQueryValues() so the server-rendered <html lang>
-    // and the client DocumentLocale correction can never disagree.
-    expect(resolveRequestLocale({ lang: [], acceptLanguage: 'de' })).toBe(
+    expect(resolveRequestLocale({ cookie: 'fr', acceptLanguage: 'fr-FR' })).toBe(
       DEFAULT_LOCALE
     );
-    expect(resolveRequestLocale({ lang: ['fr'], acceptLanguage: 'de' })).toBe(
-      DEFAULT_LOCALE
-    );
-    expect(resolveRequestLocale({ lang: [''], acceptLanguage: 'de' })).toBe(
-      DEFAULT_LOCALE
-    );
-    expect(
-      resolveRequestLocale({ lang: ['en', 'de'], acceptLanguage: 'es' })
-    ).toBe(DEFAULT_LOCALE);
   });
 
   it('treats the default locale as an explicit choice', () => {
-    expect(resolveRequestLocale({ lang: ['tr'], acceptLanguage: 'de' })).toBe('tr');
+    expect(resolveRequestLocale({ cookie: 'tr', acceptLanguage: 'de' })).toBe('tr');
   });
 });

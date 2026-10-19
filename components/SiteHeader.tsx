@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { getDictionary, withLocale, type Locale } from "@/lib/i18n";
+import { getDictionary, withBaseLocale, type Locale } from "@/lib/i18n";
 import { getGitHubRepoUrl } from "@/lib/site";
 import LocaleSwitcher from "./LocaleSwitcher";
 import ThemeToggle from "./ThemeToggle";
@@ -35,7 +35,7 @@ export function Brand({ locale }: { locale: Locale }) {
 
   return (
     <Link
-      href={withLocale("/", locale)}
+      href={withBaseLocale("/", locale)}
       className="flex shrink-0 items-center gap-3"
       aria-label={dictionary.header.homeLabel}
     >
@@ -69,8 +69,11 @@ export default function SiteHeader({ locale, actions }: SiteHeaderProps) {
             wraps spills out of its own button and over its neighbours. The
             optional items below give way instead, in the order they matter. */}
         <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-          <ThemeToggle locale={locale} />
-          <LocaleSwitcher locale={locale} />
+          {/* The two interactive controls are handed their copy as props: the
+              dictionary stays on the server, so the browser bundle never
+              carries a language it does not render. */}
+          <ThemeToggle theme={dictionary.theme} />
+          <LocaleSwitcher locale={locale} label={dictionary.localeSwitcher.label} />
           {actions && (
             <span className="mx-1 hidden h-5 w-px shrink-0 bg-border sm:block" aria-hidden="true" />
           )}
@@ -90,7 +93,7 @@ export default function SiteHeader({ locale, actions }: SiteHeaderProps) {
             </a>
           )}
           <Link
-            href={`${withLocale("/", locale)}#nasil-calisir`}
+            href={`${withBaseLocale("/", locale)}#nasil-calisir`}
             className="hidden h-9 shrink-0 items-center gap-2 px-2 text-[13px] font-medium text-text-secondary transition-colors hover:text-text-primary lg:inline-flex"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

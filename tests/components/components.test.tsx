@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import AppError from "../../app/error";
+import AppError from "../../app/[locale]/error";
 import FeaturedLanguages from "../../components/FeaturedLanguages";
 import LocaleSwitcher from "../../components/LocaleSwitcher";
 import PrintButton from "../../components/PrintButton";
@@ -36,13 +36,15 @@ vi.mock("../../lib/github", async () => {
 
 const navigationMocks = vi.hoisted(() => ({
   push: vi.fn(),
-  searchParams: vi.fn(() => new URLSearchParams("lang=en")),
+  // The locale is a path segment now, so the router state carries it.
+  params: { locale: "en" } as { locale?: string },
 }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/current",
+  // The pathname already carries its locale segment, the way a real URL does.
+  usePathname: () => "/en/current",
   useRouter: () => ({ push: navigationMocks.push }),
-  useSearchParams: navigationMocks.searchParams,
+  useParams: () => navigationMocks.params,
 }));
 
 vi.mock("next/image", () => ({
@@ -100,7 +102,7 @@ const repo: GitHubRepo = {
 describe("client components", () => {
   beforeEach(() => {
     navigationMocks.push.mockReset();
-    navigationMocks.searchParams.mockReset().mockReturnValue(new URLSearchParams("lang=en"));
+    navigationMocks.params = { locale: "en" };
     window.history.replaceState({}, "", "/");
   });
 
@@ -122,19 +124,21 @@ describe("client components", () => {
 
   it("changes locale while preserving path, query and hash", () => {
     window.history.replaceState({}, "", "/current?tab=repos#skills");
-    render(<LocaleSwitcher locale="en" />);
+    render(<LocaleSwitcher locale="en" label="Select language" />);
 
     fireEvent.change(screen.getByRole("combobox", { name: "Select language" }), {
       target: { value: "de" },
     });
 
-    expect(navigationMocks.push).toHaveBeenCalledWith("/current?tab=repos&lang=de#skills", {
+    // The locale segment of the path is replaced, not stacked on top of it,
+    // and the query and the hash come along.
+    expect(navigationMocks.push).toHaveBeenCalledWith("/de/current?tab=repos#skills", {
       scroll: false,
     });
   });
 
   it("does not navigate for the current or an unsupported locale", () => {
-    render(<LocaleSwitcher locale="en" />);
+    render(<LocaleSwitcher locale="en" label="Select language" />);
     const select = screen.getByRole("combobox", { name: "Select language" });
 
     fireEvent.change(select, { target: { value: "en" } });
@@ -158,7 +162,7 @@ describe("client components", () => {
     fireEvent.change(input, { target: { value: " @Torvalds " } });
     fireEvent.submit(form);
 
-    expect(navigationMocks.push).toHaveBeenCalledWith("/torvalds?lang=en");
+    expect(navigationMocks.push).toHaveBeenCalledWith("/en/torvalds");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -200,6 +204,21 @@ describe("client components", () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
+  it("speaks the language of the path segment and links back to its home", () => {
+    // The error boundary is a client component, so it reads the locale from
+    // the router state instead of from the server-only root parameter.
+    navigationMocks.params = { locale: "de" };
+    render(<AppError error={new Error("private details")} retry={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { name: "Ein Fehler ist aufgetreten" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Erneut versuchen" })).toBeInTheDocument();
+    // The way out is a localized address.
+    expect(screen.getByRole("link", { name: "Startseite" })).toHaveAttribute(
+      "href",
+      "/de",
+    );
+  });
+
   it("labels the search field with the host it is asking for", () => {
     render(<SearchForm locale="en" />);
 
@@ -231,9 +250,12 @@ describe("server-compatible presentation components", () => {
     );
     expect(screen.getByRole("link", { name: "Documentation" })).toHaveAttribute(
       "href",
-      "/?lang=en#nasil-calisir"
+      "/en#nasil-calisir"
     );
-    expect(screen.getByRole("link", { name: "Git-to-Portfolio home" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Git-to-Portfolio home" })).toHaveAttribute(
+      "href",
+      "/en"
+    );
   });
 
   it("renders the default header without any route actions", () => {
@@ -638,7 +660,18 @@ describe("profile repository block", () => {
   }
 
   it("shows the repositories the user pinned instead of ranking their own work", async () => {
-    githubMocks.getPinnedRepos.mockResolvedValue([repo]);
+    // The two lists are deliberately different, so what the sheet shows says
+    // which lookup won rather than merely that a lookup happened.
+    githubMocks.getPinnedRepos.mockResolvedValue([
+      {
+        ...repo,
+        id: 101,
+        name: "pinned-project",
+        full_name: "octocat/pinned-project",
+        html_url: "https://github.com/octocat/pinned-project",
+      },
+    ]);
+    githubMocks.getTopRepos.mockResolvedValue([rankedRepo(9, "Rust")]);
 
     await renderRepos();
 
@@ -646,10 +679,17 @@ describe("profile repository block", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: "Pinned repositories" })
     ).toBeInTheDocument();
-    // The ranking is the fallback: it is not paid for when the pinned list
-    // answers, and the canonical login is what gets looked up.
+    // The pinned project is on the sheet and the ranked one is not: the
+    // ranking is the fallback, and it never gets to draw.
+    expect(
+      screen.getByRole("link", { name: /pinned-project/ })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /repo-9/ })).not.toBeInTheDocument();
+    // Both lookups start together, so the ranking is paid for in parallel
+    // instead of as a second round trip after the pinned list answers, and
+    // the canonical login is what gets looked up.
     expect(githubMocks.getPinnedRepos).toHaveBeenCalledWith("octocat");
-    expect(githubMocks.getTopRepos).not.toHaveBeenCalled();
+    expect(githubMocks.getTopRepos).toHaveBeenCalledWith("octocat", 6);
   });
 
   it("falls back to the ranked repositories when nothing is pinned", async () => {
@@ -752,7 +792,9 @@ describe("profile repository block", () => {
     expect(payload.hasPart[0]).toMatchObject({
       '@type': "SoftwareSourceCode",
       name: "hello-world",
-      author: { '@id': "https://git-to-portfolio.vercel.app/octocat#person" },
+      // The person's identity is the default locale's address, so the four
+      // languages describe one person rather than four.
+      author: { '@id': "https://git-to-portfolio.vercel.app/tr/octocat#person" },
     });
   });
 });

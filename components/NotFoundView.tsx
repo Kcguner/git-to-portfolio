@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getDictionary, withLocale, type Locale } from '@/lib/i18n';
+import { getDictionary, withBaseLocale, type Locale } from '@/lib/i18n';
 
 export type NotFoundKind = 'page' | 'user';
 
@@ -12,9 +12,10 @@ type NotFoundViewProps = {
  * The 404 body, rendered on the server.
  *
  * This deliberately lives outside `DocumentLocale.tsx`: the not-found segments
- * resolve the locale from the `x-site-locale` request header, so this view needs
- * no client hooks. Keeping it free of `useSearchParams` means the visible markup
- * is present in the initial HTML response instead of only after hydration.
+ * resolve the locale from the locale segment of the URL they were reached
+ * through, so this view needs no client hooks. Keeping it free of
+ * `useParams` and `useSearchParams` means the visible markup is present in the
+ * initial HTML response instead of only after hydration.
  */
 export default function NotFoundView({ locale, kind }: NotFoundViewProps) {
   const dictionary = getDictionary(locale).notFound;
@@ -62,7 +63,7 @@ function LinkToHome({ locale, label }: { locale: Locale; label: string }) {
     // No `text-white`: the button class carries its own ink, and paper white on
     // the night theme's signal yellow would fall below AA.
     <Link
-      href={withLocale('/', locale)}
+      href={withBaseLocale('/', locale)}
       className="btn-primary mt-8 inline-flex items-center px-6 py-3 font-semibold"
     >
       <span className="relative z-10">{label}</span>

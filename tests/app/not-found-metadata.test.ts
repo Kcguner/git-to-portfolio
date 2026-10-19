@@ -1,15 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-const headerMocks = vi.hoisted(() => ({
-  headers: vi.fn(),
-}));
-
-vi.mock('next/headers', () => ({
-  headers: headerMocks.headers,
-}));
-
-import { generateMetadata as generatePageNotFound, default as PageNotFound } from '../../app/not-found';
-import { generateMetadata as generateUserNotFound, default as UserNotFound } from '../../app/[username]/not-found';
+import {
+  generateMetadata as generatePageNotFound,
+  default as PageNotFound,
+} from '../../app/[locale]/not-found';
+import {
+  generateMetadata as generateUserNotFound,
+  default as UserNotFound,
+} from '../../app/[locale]/[username]/not-found';
+import { resetRootLocale, setRootLocale } from '../mocks/next-root-params';
 
 const NO_INDEX = {
   index: false,
@@ -30,27 +29,20 @@ function titleOf(metadata: MetadataResult): string {
   return '';
 }
 
-function setLocaleHeader(value: string | null) {
-  headerMocks.headers.mockResolvedValue({
-    get: (name: string) => (name === 'x-site-locale' ? value : null),
-  });
-}
-
 describe('not-found metadata', () => {
   beforeEach(() => {
-    headerMocks.headers.mockReset();
+    resetRootLocale();
   });
 
-  // The SSR <title> is the whole point of moving the locale resolution into
-  // Proxy: before this, every 404 was titled "404" in English regardless of
-  // the requested language.
+  // The locale of the URL is a path segment, so the 404 that belongs to it
+  // knows its language without reading a request header.
   it.each([
     ['tr', 'Aradığın sayfa yok | Git-to-Portfolio'],
     ['en', 'The page you requested does not exist | Git-to-Portfolio'],
     ['de', 'Die gewünschte Seite gibt es nicht | Git-to-Portfolio'],
     ['es', 'La página que buscas no existe | Git-to-Portfolio'],
   ])('titles the global 404 in %s', async (locale, expected) => {
-    setLocaleHeader(locale);
+    setRootLocale(locale);
     expect(titleOf(await generatePageNotFound())).toBe(expected);
   });
 
@@ -62,16 +54,15 @@ describe('not-found metadata', () => {
     ['de', 'Benutzer nicht gefunden | Git-to-Portfolio'],
     ['es', 'Usuario no encontrado | Git-to-Portfolio'],
   ])('titles the user 404 in %s', async (locale, expected) => {
-    setLocaleHeader(locale);
+    setRootLocale(locale);
     expect(titleOf(await generateUserNotFound())).toBe(expected);
   });
 
   it.each([
-    ['a missing header', null],
+    ['a missing segment', undefined],
     ['a spoofed locale', 'xx'],
-    ['a repeated locale', 'en,de'],
   ])('falls back to Turkish for %s', async (_label, value) => {
-    setLocaleHeader(value);
+    setRootLocale(value);
 
     expect(titleOf(await generatePageNotFound())).toBe(
       'Aradığın sayfa yok | Git-to-Portfolio',
@@ -85,26 +76,26 @@ describe('not-found metadata', () => {
     ['global', generatePageNotFound],
     ['user', generateUserNotFound],
   ])('keeps the %s 404 out of the index', async (_label, generate) => {
-    setLocaleHeader('en');
+    setRootLocale('en');
     expect((await generate()).robots).toMatchObject(NO_INDEX);
   });
 });
 
 describe('not-found body', () => {
   beforeEach(() => {
-    headerMocks.headers.mockReset();
+    resetRootLocale();
   });
 
   // The body used to be a client component reading useSearchParams, so the
-  // visible markup only existed after hydration. Rendering it from the
-  // request header puts it in the static HTML the 404 response ships.
+  // visible markup only existed after hydration. Rendering it from the locale
+  // segment puts it in the static HTML the 404 response ships.
   it.each([
     ['tr', 'Aradığın sayfa yok', 'Kullanıcı bulunamadı'],
     ['en', 'The page you requested does not exist', 'User not found'],
     ['de', 'Die gewünschte Seite gibt es nicht', 'Benutzer nicht gefunden'],
     ['es', 'La página que buscas no existe', 'Usuario no encontrado'],
   ])('renders the %s 404 body server-side', async (locale, pageHeading, userHeading) => {
-    setLocaleHeader(locale);
+    setRootLocale(locale);
     const { renderToStaticMarkup } = await import('react-dom/server');
 
     const pageHtml = renderToStaticMarkup(await PageNotFound());
@@ -117,16 +108,17 @@ describe('not-found body', () => {
     // Exactly one heading and one home link in each document.
     expect(pageHtml.match(/<h1/g)).toHaveLength(1);
     expect(userHtml.match(/<h1/g)).toHaveLength(1);
-    // The home link keeps the resolved locale.
-    expect(pageHtml).toContain(locale === 'tr' ? 'href="/"' : `href="/?lang=${locale}"`);
+    // The home link keeps the language of the URL it was reached through.
+    expect(pageHtml).toContain(`href="/${locale}"`);
+    expect(userHtml).toContain(`href="/${locale}"`);
   });
 
-  it('falls back to Turkish when the locale header is missing', async () => {
-    setLocaleHeader(null);
+  it('falls back to Turkish when the URL carries no locale segment', async () => {
+    resetRootLocale();
     const { renderToStaticMarkup } = await import('react-dom/server');
 
     const html = renderToStaticMarkup(await UserNotFound());
     expect(html).toContain('Kullanıcı bulunamadı');
-    expect(html).toContain('href="/"');
+    expect(html).toContain('href="/tr"');
   });
 });

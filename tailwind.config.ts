@@ -17,12 +17,15 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        // Fraunces is self-hosted through @fontsource-variable/fraunces; see
-        // app/fonts.scss. The serif fallbacks keep headings on a real serif
-        // face if the webfont is unavailable.
-        display: ["Fraunces", "Georgia", "serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+        // The three families are loaded by next/font/local — the sans and the
+        // mono in the locale layout, the display serif in the home page —
+        // and each of them reaches the document as a CSS variable. The
+        // variable carries the webfont, the metric-adjusted fallback
+        // next/font derives from it and the system's own faces, so the
+        // utilities below need nothing else.
+        sans: ["var(--font-inter)"],
+        display: ["var(--font-fraunces)"],
+        mono: ["var(--font-jetbrains-mono)"],
       },
       colors: {
         background: token("background"),

@@ -6,13 +6,19 @@ import {
   APP_VERSION,
   DEFAULT_LOCALE,
   dictionaries,
+  getBasePathname,
   getDictionary,
-  getLocale,
+  getLocaleAlternates,
+  getLocaleFromSegment,
+  getProfileBasePathname,
+  getProfileOpenGraphImagePath,
+  getProfilePathname,
   isLocale,
   LOCALE_LABELS,
   LOCALE_TAGS,
   LOCALES,
   OPEN_GRAPH_LOCALES,
+  withBaseLocale,
   withLocale,
 } from '../../lib/i18n';
 
@@ -63,42 +69,231 @@ function mergeInspection(
   };
 }
 
-describe('getLocale', () => {
+describe('getLocaleFromSegment', () => {
   it.each(LOCALES)('accepts the supported %s locale', (locale) => {
-    expect(getLocale({ lang: locale })).toBe(locale);
+    expect(getLocaleFromSegment(locale)).toBe(locale);
   });
 
-  it('defaults safely when the language is missing', () => {
-    expect(getLocale({})).toBe(DEFAULT_LOCALE);
-    expect(getLocale(undefined)).toBe('tr');
-    expect(getLocale(null)).toBe('tr');
+  it('defaults safely when the segment is missing', () => {
+    expect(getLocaleFromSegment(undefined)).toBe('tr');
+    expect(getLocaleFromSegment(null)).toBe('tr');
+    expect(getLocaleFromSegment('')).toBe('tr');
   });
 
-  it.each(['fr', 'EN', '', 'en-US'])('falls back for an unsupported value: %s', (value) => {
-    expect(getLocale({ lang: value })).toBe('tr');
+  it.each(['fr', 'EN', 'en-US', 'tr-TR'])(
+    'falls back for an unsupported segment: %s',
+    (value) => {
+      expect(getLocaleFromSegment(value)).toBe('tr');
+    },
+  );
+});
+
+describe('profile paths', () => {
+  it('puts the locale in front of the username', () => {
+    expect(getProfilePathname('torvalds', 'en')).toBe('/en/torvalds');
+    expect(getProfilePathname('torvalds', 'tr')).toBe('/tr/torvalds');
   });
 
-  it('falls back when a query key has multiple values', () => {
-    expect(getLocale({ lang: ['en', 'de'] })).toBe('tr');
+  it('percent-encodes the username', () => {
+    expect(getProfilePathname('octo cat', 'es')).toBe('/es/octo%20cat');
+  });
+
+  it('keeps the base path of a profile free of a locale segment', () => {
+    expect(getProfileBasePathname('torvalds')).toBe('/torvalds');
+    expect(getProfileBasePathname('octo cat')).toBe('/octo%20cat');
+    // The account called `en` has the base path `/en`, and nothing else.
+    expect(getProfileBasePathname('en')).toBe('/en');
+  });
+
+  it('addresses the social card under the locale it belongs to', () => {
+    expect(getProfileOpenGraphImagePath('octocat', 'es')).toBe(
+      '/es/octocat/opengraph-image/es',
+    );
+  });
+});
+
+describe('base paths', () => {
+  it('leaves a path without a locale segment alone', () => {
+    expect(getBasePathname('/')).toBe('/');
+    expect(getBasePathname('/torvalds')).toBe('/torvalds');
+  });
+
+  it('strips an existing locale segment exactly once', () => {
+    expect(getBasePathname('/en/torvalds')).toBe('/torvalds');
+    expect(getBasePathname('/en/en')).toBe('/en');
+  });
+
+  it('does not read a lone segment as a locale', () => {
+    // `/en` is the base path of the account called `en`, not the English home.
+    expect(getBasePathname('/en')).toBe('/en');
+    expect(getBasePathname('/tr')).toBe('/tr');
+    expect(getBasePathname('/de')).toBe('/de');
+    expect(getBasePathname('/es')).toBe('/es');
+  });
+
+  it('prefixes a base path with a locale without touching it', () => {
+    expect(withBaseLocale('/torvalds', 'en')).toBe('/en/torvalds');
+    expect(withBaseLocale('/', 'tr')).toBe('/tr');
+    // The account called `en` keeps its own name behind the locale.
+    expect(withBaseLocale('/en', 'en')).toBe('/en/en');
+  });
+
+  it('publishes the account called `en` under its own four addresses', () => {
+    // The locale is only ever put in front of the base path, so the account
+    // called `en` is never published as the English home.
+    expect(withBaseLocale('/en', 'tr')).toBe('/tr/en');
+    expect(withBaseLocale('/en', 'en')).toBe('/en/en');
+    expect(withBaseLocale('/en', 'de')).toBe('/de/en');
+    expect(withBaseLocale('/en', 'es')).toBe('/es/en');
+  });
+
+  it('does not read a lone leading segment as a locale', () => {
+    // `withLocale()` is the full-path builder and *does* replace the leading
+    // segment: `/en` is the English home there, so it becomes `/de`. The
+    // base-path builder never does that.
+    expect(withLocale('/en', 'de')).toBe('/de');
+    expect(withBaseLocale('/en', 'de')).toBe('/de/en');
+  });
+});
+
+describe('the server barrel', () => {
+  it('re-exports the base-path helpers, so no caller reaches into the consts module', async () => {
+    const consts = await import('../../lib/i18n/consts');
+
+    expect(getBasePathname).toBe(consts.getBasePathname);
+    expect(getProfileBasePathname).toBe(consts.getProfileBasePathname);
+    expect(withBaseLocale).toBe(consts.withBaseLocale);
+  });
+});
+
+describe('getLocaleAlternates', () => {
+  it('builds one hreflang target per supported locale', () => {
+    expect(getLocaleAlternates('/torvalds')).toEqual({
+      'tr-TR': '/tr/torvalds',
+      'en-US': '/en/torvalds',
+      'de-DE': '/de/torvalds',
+      'es-ES': '/es/torvalds',
+      'x-default': '/tr/torvalds',
+    });
+  });
+
+  it('points the home page at the four locale homes', () => {
+    expect(getLocaleAlternates('/')).toEqual({
+      'tr-TR': '/tr',
+      'en-US': '/en',
+      'de-DE': '/de',
+      'es-ES': '/es',
+      'x-default': '/tr',
+    });
+  });
+
+  it('never stacks two locale prefixes on top of each other', () => {
+    expect(getLocaleAlternates('/en/torvalds')).toEqual({
+      'tr-TR': '/tr/torvalds',
+      'en-US': '/en/torvalds',
+      'de-DE': '/de/torvalds',
+      'es-ES': '/es/torvalds',
+      'x-default': '/tr/torvalds',
+    });
+  });
+
+  it('reads an already localized path as the same page', () => {
+    // `/en/torvalds` is the English address of the account `torvalds`: it is
+    // the same page as the base path `/torvalds`, and the cluster is the one
+    // of that page.
+    expect(getLocaleAlternates('/en/torvalds')).toEqual({
+      'tr-TR': '/tr/torvalds',
+      'en-US': '/en/torvalds',
+      'de-DE': '/de/torvalds',
+      'es-ES': '/es/torvalds',
+      'x-default': '/tr/torvalds',
+    });
+    // `/en/en` is the English address of the account called `en`. The prefix
+    // is removed once, so this is the account `en` and not a path with a
+    // locale on top of a locale.
+    expect(getLocaleAlternates('/en/en')).toEqual({
+      'tr-TR': '/tr/en',
+      'en-US': '/en/en',
+      'de-DE': '/de/en',
+      'es-ES': '/es/en',
+      'x-default': '/tr/en',
+    });
+  });
+
+  it('does not read a username that looks like a locale as a locale', () => {
+    // The GitHub account `en` exists. Its base path is `/en`, and its four
+    // published addresses are `/tr/en`, `/en/en`, `/de/en` and `/es/en` —
+    // never the four language homes.
+    expect(getLocaleAlternates('/en')).toEqual({
+      'tr-TR': '/tr/en',
+      'en-US': '/en/en',
+      'de-DE': '/de/en',
+      'es-ES': '/es/en',
+      'x-default': '/tr/en',
+    });
+    expect(getLocaleAlternates('/tr')).toEqual({
+      'tr-TR': '/tr/tr',
+      'en-US': '/en/tr',
+      'de-DE': '/de/tr',
+      'es-ES': '/es/tr',
+      'x-default': '/tr/tr',
+    });
+    expect(getLocaleAlternates('/de')).toEqual({
+      'tr-TR': '/tr/de',
+      'en-US': '/en/de',
+      'de-DE': '/de/de',
+      'es-ES': '/es/de',
+      'x-default': '/tr/de',
+    });
+    expect(getLocaleAlternates('/es')).toEqual({
+      'tr-TR': '/tr/es',
+      'en-US': '/en/es',
+      'de-DE': '/de/es',
+      'es-ES': '/es/es',
+      'x-default': '/tr/es',
+    });
   });
 });
 
 describe('withLocale', () => {
-  it('adds a non-default locale to a pathname', () => {
-    expect(withLocale('/torvalds', 'en')).toBe('/torvalds?lang=en');
-    expect(withLocale('/torvalds', 'tr')).toBe('/torvalds');
+  it('prefixes the pathname with the locale', () => {
+    expect(withLocale('/torvalds', 'en')).toBe('/en/torvalds');
+    expect(withLocale('/torvalds', 'tr')).toBe('/tr/torvalds');
   });
 
-  it('replaces an old locale and preserves other query values and the hash', () => {
-    expect(
-      withLocale('/torvalds', 'de', '?lang=tr&tab=repos&tag=nextjs', '#projects'),
-    ).toBe('/torvalds?tab=repos&tag=nextjs&lang=de#projects');
+  it('maps the base path to the locale home', () => {
+    expect(withLocale('/', 'tr')).toBe('/tr');
+    expect(withLocale('', 'de')).toBe('/de');
+  });
+
+  it('replaces an existing locale segment instead of stacking one', () => {
+    expect(withLocale('/en/torvalds', 'de')).toBe('/de/torvalds');
+    expect(withLocale('/tr/torvalds', 'es')).toBe('/es/torvalds');
+    expect(withLocale('/en', 'de')).toBe('/de');
+  });
+
+  it('drops the legacy lang query key and keeps every other value', () => {
+    expect(withLocale('/torvalds', 'de', '?lang=tr&tab=repos&tag=nextjs')).toBe(
+      '/de/torvalds?tab=repos&tag=nextjs',
+    );
+    expect(withLocale('/torvalds', 'en', '?lang=en')).toBe('/en/torvalds');
+  });
+
+  it('keeps the query string and the hash', () => {
+    expect(withLocale('/torvalds', 'en', '?tab=repos', '#repos')).toBe(
+      '/en/torvalds?tab=repos#repos',
+    );
+    // A hash that rides along inside the search string ends the URL rather
+    // than being percent-encoded into the query value.
+    expect(withLocale('/torvalds', 'en', '?tab=repos#x')).toBe(
+      '/en/torvalds?tab=repos#x',
+    );
   });
 
   it('serializes object query values, including repeated keys', () => {
     expect(
       withLocale('/', 'es', { view: ['compact', 'print'], tab: 'repos', empty: undefined }),
-    ).toBe('/?view=compact&view=print&tab=repos&lang=es');
+    ).toBe('/es?view=compact&view=print&tab=repos');
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { generateImageMetadata as homeImages } from "../../app/opengraph-image";
-import { generateImageMetadata as profileImages } from "../../app/[username]/opengraph-image";
+import { generateImageMetadata as homeImages } from "../../app/[locale]/opengraph-image";
+import { generateImageMetadata as profileImages } from "../../app/[locale]/[username]/opengraph-image";
 import { getDictionary, LOCALES } from "../../lib/i18n";
 import { getLocaleFromImageId, SOCIAL_IMAGE_SIZE } from "../../lib/seo";
 

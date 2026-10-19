@@ -1,23 +1,30 @@
 /**
- * Server-side locale resolution.
+ * Locale negotiation for the bare site root.
  *
- * Root layouts cannot read `searchParams`, so the previous implementation
- * patched `document.documentElement.lang` from a client effect and the SSR
- * HTML always shipped the default language. This module owns the pure
- * negotiation logic that Proxy uses to resolve the effective locale *before*
- * the route renders, and that Server Components use to read the result back.
+ * The locale is a path segment now: every localized URL is
+ * `/<locale>/...`, and the four languages are four separate, separately
+ * cacheable pages instead of one request-bound rendering. That leaves exactly
+ * one URL that cannot name a language on its own — the bare `/` — and this
+ * module owns what happens to it.
+ *
+ * The Proxy negotiates that one URL from the visitor's `Accept-Language`
+ * header and their `site-locale` cookie, redirects to `/<locale>`, and
+ * remembers the choice in the cookie. Every other URL already says which
+ * language it is, so it is served without any negotiation at all.
  */
 
-import { DEFAULT_LOCALE, isLocale, type Locale } from './i18n';
+import { DEFAULT_LOCALE, isLocale } from './i18n/consts';
+import type { Locale } from './i18n/types';
 
 /**
- * Request header Proxy uses to hand the resolved locale to Server Components.
+ * The name of the cookie the visitor's language choice is kept in.
  *
- * Deliberately not `NEXT_PUBLIC_` prefixed: the value must never be inlined
- * into the client bundle. Proxy overwrites it unconditionally on every matched
- * request, so a client-supplied value can never be trusted.
+ * It is a preference, not a secret: the Proxy reads it to answer the bare
+ * root, and the language switcher writes it from the browser when the
+ * visitor picks a language. Nothing about it is sensitive, and it is not an
+ * environment value — it is a plain constant that both sides import.
  */
-export const LOCALE_HEADER = 'x-site-locale';
+export const SITE_LOCALE_COOKIE = 'site-locale';
 
 /**
  * RFC 9110 language-range / language-tag shape. Regional subtags are allowed
@@ -106,41 +113,46 @@ export function negotiateLocaleFromAcceptLanguage(
   return DEFAULT_LOCALE;
 }
 
+/**
+ * Reads a locale out of the `site-locale` cookie.
+ *
+ * The cookie is written by the Proxy from a value the site itself produced,
+ * but it still comes from the client, so it is treated as untrusted input: a
+ * missing, empty or unsupported value yields `null` instead of a locale, and
+ * the caller falls back to negotiation. `null` and `undefined` are both
+ * "absent".
+ */
+export function readLocaleCookie(value: string | null | undefined): Locale | null {
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+
+  return isLocale(trimmed) ? trimmed : null;
+}
+
 export type LocaleRequestSignals = {
-  /**
-   * Every `lang` query value, or `undefined` when the request carries no
-   * `lang` parameter at all.
-   */
-  lang?: readonly string[];
+  /** The raw `Accept-Language` request header, if the request carried one. */
   acceptLanguage?: string | null;
+  /** The raw `site-locale` cookie value, if the request carried one. */
+  cookie?: string | null;
 };
 
 /**
- * Resolves the effective locale for a request.
+ * Resolves the effective locale for the bare `/`.
  *
- * An explicit `lang` query is authoritative: only a single supported code is
- * accepted, everything else falls back to the default. That mirrors
- * `getLocaleFromQueryValues()` on the client, which keeps the server-rendered
- * `<html lang>` and the client-side `DocumentLocale` correction in agreement.
+ * The cookie wins over `Accept-Language`: it is the language the visitor
+ * explicitly chose (by switching languages, or by the Proxy remembering the
+ * language it redirected them to), and an explicit choice outranks the
+ * browser's default. A cookie that is missing or unusable is ignored and the
+ * header decides; if neither signal is usable, the default locale does.
  */
 export function resolveRequestLocale({
-  lang,
   acceptLanguage,
+  cookie,
 }: LocaleRequestSignals): Locale {
-  if (lang !== undefined) {
-    return lang.length === 1 && isLocale(lang[0]) ? lang[0] : DEFAULT_LOCALE;
-  }
+  const remembered = readLocaleCookie(cookie);
+  if (remembered) return remembered;
 
   return negotiateLocaleFromAcceptLanguage(acceptLanguage);
-}
-
-/**
- * Reads a locale back from the request header Proxy set. Anything unexpected
- * (missing header, spoofed value, direct render without Proxy) falls back to
- * the default locale rather than trusting unvalidated input.
- */
-export function getLocaleFromHeaderValue(
-  value: string | null | undefined,
-): Locale {
-  return isLocale(value) ? value : DEFAULT_LOCALE;
 }

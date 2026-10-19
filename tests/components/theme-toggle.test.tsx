@@ -2,6 +2,15 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ThemeToggle from "../../components/ThemeToggle";
+import { getDictionary, type Locale } from "../../lib/i18n";
+
+/**
+ * The toggle no longer knows about languages: its server parent resolves the
+ * copy and hands it over, so the test does the same.
+ */
+function themeFor(locale: Locale) {
+  return getDictionary(locale).theme;
+}
 
 function setThemeClass(theme: "light" | "dark") {
   document.documentElement.classList.remove("light", "dark");
@@ -34,7 +43,7 @@ describe("ThemeToggle", () => {
   });
 
   it("renders both states so the server class decides which is visible", () => {
-    render(<ThemeToggle locale="en" />);
+    render(<ThemeToggle theme={themeFor("en")} />);
 
     // No effect and no client state: both labels are in the markup, and the
     // `dark:` variants pick the visible one from <html>.
@@ -49,7 +58,7 @@ describe("ThemeToggle", () => {
   });
 
   it("switches to the night theme from paper and remembers it", () => {
-    render(<ThemeToggle locale="en" />);
+    render(<ThemeToggle theme={themeFor("en")} />);
 
     fireEvent.click(screen.getByRole("button"));
 
@@ -60,7 +69,7 @@ describe("ThemeToggle", () => {
 
   it("switches back to paper and remembers it", () => {
     setThemeClass("dark");
-    render(<ThemeToggle locale="tr" />);
+    render(<ThemeToggle theme={themeFor("tr")} />);
 
     fireEvent.click(screen.getByRole("button"));
 
@@ -71,7 +80,7 @@ describe("ThemeToggle", () => {
 
   it("persists the choice for a year on every path", () => {
     const cookie = vi.spyOn(document, "cookie", "set");
-    render(<ThemeToggle locale="de" />);
+    render(<ThemeToggle theme={themeFor("de")} />);
 
     fireEvent.click(screen.getByRole("button"));
 
@@ -81,12 +90,12 @@ describe("ThemeToggle", () => {
   });
 
   it("localizes the labels", () => {
-    const { unmount } = render(<ThemeToggle locale="es" />);
+    const { unmount } = render(<ThemeToggle theme={themeFor("es")} />);
     expect(screen.getByText("Cambiar al tema nocturno")).toBeInTheDocument();
     expect(screen.getByText("Cambiar al tema de papel")).toBeInTheDocument();
     unmount();
 
-    render(<ThemeToggle locale="de" />);
+    render(<ThemeToggle theme={themeFor("de")} />);
     expect(screen.getByText("Zum Nachtmodus wechseln")).toBeInTheDocument();
     expect(screen.getByText("Zum Papiermodus wechseln")).toBeInTheDocument();
   });
@@ -95,7 +104,7 @@ describe("ThemeToggle", () => {
     // A moon drawn on the night page reads as "switch to night", which is a
     // control with nothing left to do. The icon has to name the same target as
     // the label it sits next to, so each branch pairs them.
-    const { unmount } = render(<ThemeToggle locale="en" />);
+    const { unmount } = render(<ThemeToggle theme={themeFor("en")} />);
 
     const toNight = screen.getByText("Switch to night theme").parentElement;
     expect(toNight).toHaveClass("dark:hidden");
@@ -112,16 +121,18 @@ describe("ThemeToggle", () => {
   });
 
   it("repaints the browser chrome with the palette it switches to", () => {
-    // The `theme-color` meta tag is resolved per request from the cookie, so
-    // after a click it would still name the old palette until the next full
-    // load: the tab and the address bar would keep the previous colour.
+    // The `theme-color` meta tag is a literal now — the server cannot read the
+    // cookie without making every document dynamic — so it keeps naming the
+    // night palette until the toggle or the inline theme script repaints it.
+    // Otherwise the tab and the address bar would show the wrong palette for
+    // a year.
     setThemeClass("dark");
     const meta = document.createElement("meta");
     meta.name = "theme-color";
     meta.content = "#0a1628";
     document.head.append(meta);
 
-    const { unmount } = render(<ThemeToggle locale="en" />);
+    const { unmount } = render(<ThemeToggle theme={themeFor("en")} />);
     fireEvent.click(screen.getByRole("button"));
     expect(meta.content).toBe("#f4f6f9");
 
